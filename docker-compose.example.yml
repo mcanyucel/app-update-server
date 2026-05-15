@@ -1,0 +1,18 @@
+services:
+  app-update-server:
+    image: ghcr.io/mcanyucel/app-update-server:main
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Auth__ApiKey=${APP_UPDATE_SERVER_API_KEY}
+    volumes:
+      - app-update-server-data:/data
+    networks:
+      - proxy
+
+volumes:
+  app-update-server-data:
+
+networks:
+  proxy:
+    external: true
