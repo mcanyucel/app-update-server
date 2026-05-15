@@ -38,6 +38,35 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
+// Add a middleware to check forward-auth
+app.Use(
+    async (context, next) =>
+    {
+        var forwardAuth = app.Configuration.GetValue<bool>("Auth:ForwardAuth");
+        if (forwardAuth)
+        {
+            // Only protect UI routes, not public API endpoints
+            var path = context.Request.Path.Value ?? "";
+            var isPublicApi =
+                path.StartsWith("/api/update/download")
+                || (path == "/api/update" && context.Request.Method == "POST");
+            var isUploadApi = path == "/api/update/upload";
+
+            if (!isPublicApi && !isUploadApi)
+            {
+                var remoteUser = context.Request.Headers["Remote-User"].ToString();
+                if (string.IsNullOrEmpty(remoteUser))
+                {
+                    context.Response.StatusCode = 401;
+                    await context.Response.WriteAsync("Unauthorized");
+                    return;
+                }
+            }
+        }
+        await next();
+    }
+);
+
 app.UseStaticFiles();
 app.UseAntiforgery();
 
