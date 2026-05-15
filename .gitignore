@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+
+# Data
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# dotnet
+*.user
+*.suo
+.vs/
+wwwroot/lib/
+
+# Environment / secrets
+appsettings.Development.json
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+**/binaries/

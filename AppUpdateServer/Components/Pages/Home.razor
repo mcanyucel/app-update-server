@@ -1,0 +1,81 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@inject UpdateService Updates
+@inject NavigationManager Nav
+@inject IDialogService DialogService
+@using AppUpdateServer.Services
+
+<PageTitle>Apps — App Update Server</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Tracked Applications</MudText>
+
+@if (_apps is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_apps.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        No apps registered yet.
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var app in _apps)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="cursor-pointer" @onclick="() => GoToApp(app.Slug)">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@app.Name</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@app.Slug</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (app.Latest is not null)
+                        {
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@app.Latest.VersionString</MudChip>
+                            <MudText Typo="Typo.caption" Class="mt-2">
+                                @app.Latest.UploadedAt.ToString("yyyy-MM-dd HH:mm") UTC
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">No versions uploaded</MudText>
+                        }
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @app.TotalVersions version@(app.TotalVersions != 1 ? "s" : "") stored
+                        </MudText>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+        Style="position:fixed; bottom:2rem; right:2rem;"
+        OnClick="OpenNewAppDialog" />
+
+@code {
+    private List<AppSummary>? _apps;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _apps = await Updates.GetAllAppsAsync();
+    }
+
+    private void GoToApp(string slug) => Nav.NavigateTo($"/app/{slug}");
+
+    private async Task OpenNewAppDialog()
+    {
+        var dialog = await DialogService.ShowAsync<NewAppDialog>("Register New App");
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string slug })
+            Nav.NavigateTo($"/app/{slug}");
+    }
+}

@@ -1,0 +1,17 @@
+﻿@inherits LayoutComponentBase
+
+<MudThemeProvider DefaultScrollbar="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h6">App Update Server</MudText>
+    </MudAppBar>
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>

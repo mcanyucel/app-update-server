@@ -1,0 +1,48 @@
+@inject UpdateService Updates
+@using AppUpdateServer.Services
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name"
+                      Label="App Name"
+                      Placeholder="e.g. Desktop Client"
+                      Variant="Variant.Outlined"
+                      Class="mb-2" />
+        @if (!string.IsNullOrEmpty(_name))
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Slug: <strong>@UpdateService.GenerateSlug(_name)</strong>
+            </MudText>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Create">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private string _name = "";
+    private string? _error;
+
+    private async Task Create()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "Name is required.";
+            return;
+        }
+
+        var app = await Updates.CreateAppAsync(_name.Trim());
+        MudDialog.Close(DialogResult.Ok(app.Slug));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

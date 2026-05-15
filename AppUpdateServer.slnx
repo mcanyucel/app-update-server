@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AppUpdateServer.Cli/AppUpdateServer.Cli.csproj" />
+  <Project Path="AppUpdateServer/AppUpdateServer.csproj" />
+</Solution>
