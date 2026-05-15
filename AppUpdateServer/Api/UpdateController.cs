@@ -138,4 +138,68 @@ public class UpdateController(
         var hash = SHA256.HashData(bytes);
         return Convert.ToBase64String(hash[..8]);
     }
+
+    [HttpGet("apps")]
+    public async Task<IActionResult> ListApps()
+    {
+        if (!IsAuthorized())
+            return Unauthorized();
+
+        var apps = await updates.GetAllAppsAsync();
+        return Ok(apps);
+    }
+
+    [HttpDelete("apps/{slug}")]
+    public async Task<IActionResult> DeleteApp(string slug)
+    {
+        if (!IsAuthorized())
+            return Unauthorized();
+
+        var app = await updates.GetAppBySlugAsync(slug);
+        if (app is null)
+            return NotFound($"App '{slug}' not found");
+
+        await updates.DeleteAppAsync(app.Id);
+        return Ok();
+    }
+
+    [HttpDelete("apps/{slug}/versions/{versionId:int}")]
+    public async Task<IActionResult> DeleteVersion(string slug, int versionId)
+    {
+        if (!IsAuthorized())
+            return Unauthorized();
+
+        var result = await updates.DeleteVersionAsync(versionId);
+        if (!result)
+            return NotFound($"Version not found");
+
+        return Ok();
+    }
+
+    [HttpPost("apps/{slug}/rollback")]
+    public async Task<IActionResult> Rollback(string slug)
+    {
+        if (!IsAuthorized())
+            return Unauthorized();
+
+        var versions = await updates.GetVersionHistoryAsync(slug);
+        if (versions.Count == 0)
+            return NotFound("No versions found");
+
+        if (versions.Count == 1)
+            return BadRequest("Only one version exists, cannot rollback");
+
+        await updates.DeleteVersionAsync(versions[0].Id);
+        return Ok(versions[1]);
+    }
+
+    [HttpGet("apps/{slug}/versions")]
+    public async Task<IActionResult> ListVersions(string slug)
+    {
+        if (!IsAuthorized())
+            return Unauthorized();
+
+        var versions = await updates.GetVersionHistoryAsync(slug);
+        return Ok(versions);
+    }
 }
