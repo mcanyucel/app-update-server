@@ -143,15 +143,17 @@ else
 
         if (string.IsNullOrWhiteSpace(_uploadVersion))
         { _uploadError = "Version string is required."; return; }
+        if (!UpdateService.IsValidVersionString(_uploadVersion.Trim()))
+        { _uploadError = UpdateService.InvalidVersionMessage; return; }
         if (_selectedFile is null)
         { _uploadError = "Please select a file."; return; }
 
         _uploading = true;
         try
         {
-            await using var stream = _selectedFile.OpenReadStream(maxAllowedSize: 500 * 1024 * 1024);
+            await using var stream = _selectedFile.OpenReadStream(maxAllowedSize: Updates.MaxUploadBytes);
             var result = await Updates.UploadVersionAsync(
-                Slug, _uploadVersion, _uploadNotes, stream, _selectedFile.Name);
+                Slug, _uploadVersion.Trim(), _uploadNotes, stream, _selectedFile.Name);
 
             if (result.Success)
             {
@@ -178,7 +180,7 @@ else
 
     private async Task DeleteVersion(int versionId, bool isLatest)
     {
-        await Updates.DeleteVersionAsync(versionId);
+        await Updates.DeleteVersionAsync(Slug, versionId);
         await LoadData();
         if (isLatest)
             _uploadSuccess = "Rolled back — previous version is now current.";

@@ -5,6 +5,8 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - Auth__ApiKey=${APP_UPDATE_SERVER_API_KEY}
+      # Largest accepted upload, in bytes. Defaults to 1 GiB.
+      # - Storage__MaxUploadBytes=2147483648
     volumes:
       - app-update-server-data:/data
     networks:

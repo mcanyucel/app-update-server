@@ -70,11 +70,17 @@ public class UpdateController(
         var form = Request.Form;
         var appName = form["appName"].ToString();
         var version = form["version"].ToString();
+        // "releaseNotes" is what older aus CLI versions send.
         var notes = form["notes"].ToString();
+        if (string.IsNullOrEmpty(notes))
+            notes = form["releaseNotes"].ToString();
         var file = form.Files["updateFile"];
 
         if (string.IsNullOrWhiteSpace(appName) || string.IsNullOrWhiteSpace(version))
             return BadRequest("appName and version are required");
+
+        if (!UpdateService.IsValidVersionString(version))
+            return BadRequest(UpdateService.InvalidVersionMessage);
 
         if (file is null || file.Length == 0)
             return BadRequest("updateFile is required");
@@ -169,9 +175,9 @@ public class UpdateController(
         if (!IsAuthorized())
             return Unauthorized();
 
-        var result = await updates.DeleteVersionAsync(versionId);
+        var result = await updates.DeleteVersionAsync(slug, versionId);
         if (!result)
-            return NotFound($"Version not found");
+            return NotFound($"Version {versionId} not found for app '{slug}'");
 
         return Ok();
     }
@@ -189,7 +195,7 @@ public class UpdateController(
         if (versions.Count == 1)
             return BadRequest("Only one version exists, cannot rollback");
 
-        await updates.DeleteVersionAsync(versions[0].Id);
+        await updates.DeleteVersionAsync(slug, versions[0].Id);
         return Ok(versions[1]);
     }
 

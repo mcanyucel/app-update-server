@@ -26,7 +26,14 @@ public record UploadResult(bool Success, string? Error, VersionSummary? Version)
 
 public class UpdateService(AppDbContext db, IConfiguration config, ILogger<UpdateService> logger)
 {
+    public const long DefaultMaxUploadBytes = 1024L * 1024 * 1024; // 1 GiB
+
     private string BinariesPath => config["Storage:BinariesPath"] ?? "/data/binaries";
+
+    public long MaxUploadBytes => GetMaxUploadBytes(config);
+
+    public static long GetMaxUploadBytes(IConfiguration config) =>
+        config.GetValue<long?>("Storage:MaxUploadBytes") ?? DefaultMaxUploadBytes;
 
     public async Task<List<AppSummary>> GetAllAppsAsync()
     {
@@ -102,9 +109,17 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
         if (app is null)
             return new UploadResult(false, $"App '{slug}' not found", null);
 
-        var safeFileName = $"{slug}-{versionString}-{SanitizeFileName(originalFileName)}";
+        if (!IsValidVersionString(versionString))
+            return new UploadResult(false, InvalidVersionMessage, null);
+
+        var safeFileName =
+            $"{slug}-{versionString}-{SanitizeFileName(originalFileName)}";
         var destPath = Path.Combine(BinariesPath, safeFileName);
         Directory.CreateDirectory(BinariesPath);
+
+        // Stage to a temp file: destPath may be the binary we are about to
+        // replace, and hashing can still fail halfway through.
+        var tempPath = Path.Combine(BinariesPath, $".upload-{Guid.NewGuid():N}.tmp");
 
         string hash;
         long size;
@@ -112,32 +127,47 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
         try
         {
             using var sha256 = System.Security.Cryptography.SHA256.Create();
-            using var dest = File.Create(destPath);
-            using var hashStream = new System.Security.Cryptography.CryptoStream(
-                dest,
-                sha256,
-                System.Security.Cryptography.CryptoStreamMode.Write
-            );
-
-            await fileStream.CopyToAsync(hashStream);
-            await hashStream.FlushFinalBlockAsync();
+            await using (var dest = File.Create(tempPath))
+            await using (
+                var hashStream = new System.Security.Cryptography.CryptoStream(
+                    dest,
+                    sha256,
+                    System.Security.Cryptography.CryptoStreamMode.Write
+                )
+            )
+            {
+                await fileStream.CopyToAsync(hashStream);
+                await hashStream.FlushFinalBlockAsync();
+            }
 
             hash = Convert.ToHexString(sha256.Hash!).ToLowerInvariant();
-            size = new FileInfo(destPath).Length;
+            size = new FileInfo(tempPath).Length;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to write binary for {Slug} {Version}", slug, versionString);
+            TryDeleteFile(tempPath);
             return new UploadResult(false, "Failed to save file", null);
         }
 
         var existing = await db.Versions.FirstOrDefaultAsync(v =>
             v.AppId == app.Id && v.VersionString == versionString
         );
+        var previousFileName = existing?.FileName;
+
+        try
+        {
+            File.Move(tempPath, destPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to store binary for {Slug} {Version}", slug, versionString);
+            TryDeleteFile(tempPath);
+            return new UploadResult(false, "Failed to save file", null);
+        }
 
         if (existing is not null)
         {
-            DeleteBinaryFile(existing.FileName);
             existing.FileName = safeFileName;
             existing.Sha256Hash = hash;
             existing.ReleaseNotes = releaseNotes;
@@ -162,6 +192,11 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
 
         await db.SaveChangesAsync();
 
+        // Safe to drop the replaced binary only now, and only when the new
+        // upload did not already land on the same path.
+        if (previousFileName is not null && previousFileName != safeFileName)
+            DeleteBinaryFile(previousFileName);
+
         var saved = await db
             .Versions.Where(v => v.AppId == app.Id && v.VersionString == versionString)
             .AsNoTracking()
@@ -170,9 +205,11 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
         return new UploadResult(true, null, ToVersionSummary(saved));
     }
 
-    public async Task<bool> DeleteVersionAsync(int versionId)
+    public async Task<bool> DeleteVersionAsync(string slug, int versionId)
     {
-        var version = await db.Versions.FindAsync(versionId);
+        var version = await db.Versions.FirstOrDefaultAsync(v =>
+            v.Id == versionId && v.App.Slug == slug
+        );
         if (version is null)
             return false;
 
@@ -251,6 +288,19 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
             File.Delete(path);
     }
 
+    private void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not remove temp file {Path}", path);
+        }
+    }
+
     public static string GenerateSlug(string name) =>
         System
             .Text.RegularExpressions.Regex.Replace(
@@ -265,5 +315,18 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
             Path.GetFileName(name),
             @"[^a-zA-Z0-9.\-_]",
             "_"
+        );
+
+    public const string InvalidVersionMessage =
+        "Version must be 1-64 characters of letters, digits, dot, dash, underscore or plus, "
+        + "and start with a letter or digit";
+
+    // The version string is part of the stored file name, so anything that
+    // could escape BinariesPath (separators, "..") must never reach disk.
+    public static bool IsValidVersionString(string versionString) =>
+        !string.IsNullOrWhiteSpace(versionString)
+        && System.Text.RegularExpressions.Regex.IsMatch(
+            versionString,
+            @"^[a-zA-Z0-9][a-zA-Z0-9.\-_+]{0,63}$"
         );
 }

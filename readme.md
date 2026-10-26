@@ -35,6 +35,21 @@ All endpoints under `/api/update`:
 | DELETE | `/api/update/apps/{slug}` | API Key | Delete app |
 | DELETE | `/api/update/apps/{slug}/versions/{id}` | API Key | Delete specific version |
 
+### Upload Request
+
+`POST /api/update/upload` takes a multipart form:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `appName` | yes | App display name; the app is created automatically if the slug is new |
+| `version` | yes | Version string (see format below) |
+| `updateFile` | yes | The binary |
+| `notes` | no | Release notes (`releaseNotes` is also accepted, for older CLI versions) |
+
+Version strings must be 1-64 characters of letters, digits, dot, dash, underscore or plus, and start with a letter or digit — e.g. `3.2.0.0`, `1.2.0`, `1.0.0-beta+build.7`. The version string becomes part of the stored file name, so anything outside that set is rejected with a 400.
+
+Re-uploading an existing version replaces its binary, hash, notes, and timestamp in place.
+
 ### Version Check Request
 
 ```json
@@ -54,11 +69,17 @@ All endpoints under `/api/update`:
 
 ## CLI
 
-Install:
+The `aus` tool is not published to NuGet yet — build and install it from this repository:
 
 ```bash
-dotnet tool install -g AppUpdateServer.Cli
+# From the repository root
+dotnet pack AppUpdateServer.Cli -c Release
+dotnet tool install -g --add-source AppUpdateServer.Cli/bin/Release AppUpdateServer.Cli
 ```
+
+To upgrade after pulling new changes, bump `<Version>` in `AppUpdateServer.Cli.csproj`, re-pack, and run `dotnet tool update -g --add-source AppUpdateServer.Cli/bin/Release AppUpdateServer.Cli`.
+
+If you would rather not install it globally, run it straight from the checkout — `dotnet run --project AppUpdateServer.Cli -- upload ...` — or publish a self-contained binary with `dotnet publish AppUpdateServer.Cli -c Release` and copy it onto your PATH.
 
 Usage:
 
@@ -81,6 +102,20 @@ aus delete-version --server https://your-server.com --api-key your-key --app my-
 # Delete an app
 aus delete-app --server https://your-server.com --api-key your-key --app my-app
 ```
+
+## Configuration
+
+Settings come from `appsettings.{Environment}.json` or environment variables (`__` replaces `:`, e.g. `Storage__MaxUploadBytes`).
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `ConnectionStrings:Default` | `Data Source=/data/updateserver.db` | SQLite connection string |
+| `Storage:BinariesPath` | `/data/binaries` | Where uploaded binaries are stored |
+| `Storage:MaxUploadBytes` | `1073741824` (1 GiB) | Largest accepted upload |
+| `Auth:ApiKey` | — | Key for the `X-API-Key` header; uploads are rejected if unset |
+| `Auth:ForwardAuth` | `false` | Require a `Remote-User` header on UI routes |
+
+`Storage:MaxUploadBytes` is applied to the Kestrel request body limit, the multipart form limit, and the web UI's file picker together, so the API and the UI always accept the same size. Raise it before pushing installers larger than 1 GiB.
 
 ## Deployment
 

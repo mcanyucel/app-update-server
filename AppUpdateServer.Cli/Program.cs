@@ -54,7 +54,7 @@ uploadCommand.SetHandler(
                 {
                     { new StringContent(app), "appName" },
                     { new StringContent(version), "version" },
-                    { new StringContent(notes), "releaseNotes" },
+                    { new StringContent(notes), "notes" },
                     { new StreamContent(progressStream), "updateFile", file.Name },
                 };
 

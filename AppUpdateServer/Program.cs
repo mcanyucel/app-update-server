@@ -1,10 +1,20 @@
 using AppUpdateServer.Components;
 using AppUpdateServer.Data;
 using AppUpdateServer.Services;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Installers are large: Kestrel (30 MB) and multipart form (128 MB) defaults
+// are both well below a realistic upload, so lift them to one shared limit.
+var maxUploadBytes = UpdateService.GetMaxUploadBytes(builder.Configuration);
+builder.WebHost.ConfigureKestrel(opts => opts.Limits.MaxRequestBodySize = maxUploadBytes);
+builder.Services.Configure<FormOptions>(opts =>
+{
+    opts.MultipartBodyLengthLimit = maxUploadBytes;
+});
 
 builder.Services.AddDbContext<AppDbContext>(opts =>
     opts.UseSqlite(
