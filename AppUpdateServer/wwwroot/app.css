@@ -1,3 +1,17 @@
+/* ── Focus ──────────────────────────────────────────────────────────────── */
+
+/* <FocusOnNavigate> moves focus to the page heading after every navigation so
+   screen readers announce the new page. Blazor makes the heading focusable by
+   giving it tabindex="-1", which leaves a focus ring drawn around the title on
+   a page nobody has clicked. Such elements cannot be reached with Tab, so
+   suppressing the ring here does not affect keyboard navigation; real focus
+   indicators everywhere else are untouched. */
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
 /* ── Shell ──────────────────────────────────────────────────────────────── */
 
 .app-header {
