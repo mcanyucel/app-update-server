@@ -76,7 +76,6 @@ else
                          DragDropZoneVisible="true"
                          OnFileUploaded="OnFileUploaded"
                          OnFileError="OnFileError"
-                         @bind-ProgressPercent="_progress"
                          Class="dropzone">
             <ChildContent>
                 <div class="dropzone-inner">
@@ -90,7 +89,10 @@ else
         @if (_uploading)
         {
             <FluentProgressBar Value="_progress" Class="upload-progress" />
-            <p class="muted">Uploading @_uploadingName… @_progress%</p>
+            <p class="muted">
+                Uploading @_uploadingName — @Format.Size(_uploadedBytes) of
+                @Format.Size(_uploadTotalBytes) (@_progress%)
+            </p>
         }
 
         @if (_uploadError is not null)
@@ -197,6 +199,8 @@ else
     private string _uploadingName = "";
     private bool _uploading;
     private int _progress;
+    private long _uploadedBytes;
+    private long _uploadTotalBytes;
 
     protected override async Task OnInitializedAsync()
     {
@@ -228,10 +232,19 @@ else
 
         _uploading = true;
         _uploadingName = file.Name;
+        _uploadTotalBytes = file.Size;
+        _uploadedBytes = 0;
+        _progress = 0;
+        await InvokeAsync(StateHasChanged);
+
         try
         {
+            // The component cannot see how much of the stream we have consumed,
+            // so count the bytes ourselves and re-render as they arrive.
+            await using var progress = new ProgressReportingStream(file.Stream!, OnBytesRead);
+
             var result = await Updates.UploadVersionAsync(
-                Slug, version, _uploadNotes, file.Stream!, file.Name);
+                Slug, version, _uploadNotes, progress, file.Name);
 
             if (result.Success)
             {
@@ -241,11 +254,11 @@ else
                 _uploadVersion = "";
                 _uploadNotes = "";
                 await LoadData();
+                Nav.NavigateTo("/");
+                return;
             }
-            else
-            {
-                _uploadError = result.Error;
-            }
+
+            _uploadError = result.Error;
         }
         catch (Exception ex)
         {
@@ -257,6 +270,22 @@ else
             _progress = 0;
             _uploadingName = "";
         }
+    }
+
+    /// <summary>
+    /// Called from the stream copy, so re-render only when the whole percent
+    /// changes rather than on every buffer.
+    /// </summary>
+    private void OnBytesRead(long totalRead)
+    {
+        _uploadedBytes = totalRead;
+
+        var percent = _uploadTotalBytes > 0 ? (int)(totalRead * 100 / _uploadTotalBytes) : 0;
+        if (percent == _progress)
+            return;
+
+        _progress = percent;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void OnFileError(FluentInputFileErrorEventArgs error) => _uploadError = error.ErrorMessage;

@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using AppUpdateServer.Components;
 using AppUpdateServer.Data;
 using AppUpdateServer.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.FluentUI.AspNetCore.Components;
@@ -17,6 +18,25 @@ builder.Services.Configure<FormOptions>(opts =>
 {
     opts.MultipartBodyLengthLimit = maxUploadBytes;
 });
+
+// Keep the keys on the data volume: the default location is inside the
+// container, so recreating it invalidates every antiforgery token already
+// issued to a browser. Falling back to ephemeral keys is better than
+// crash-looping before /health can report why the volume is unusable.
+var keysPath = UpdateService.GetKeysPath(builder.Configuration);
+string? keysError = null;
+try
+{
+    Directory.CreateDirectory(keysPath);
+    builder
+        .Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+        .SetApplicationName("AppUpdateServer");
+}
+catch (Exception ex)
+{
+    keysError = ex.Message;
+}
 
 builder.Services.AddDbContext<AppDbContext>(opts =>
     opts.UseSqlite(
@@ -44,6 +64,14 @@ builder
 var app = builder.Build();
 
 app.Logger.LogInformation("App Update Server {Version} starting", BuildInfo.DisplayWithCommit);
+
+if (keysError is not null)
+    app.Logger.LogWarning(
+        "Could not persist data protection keys to '{KeysPath}' ({Error}). Antiforgery tokens "
+            + "will be invalidated whenever the container is recreated.",
+        keysPath,
+        keysError
+    );
 
 // Perform auto-migration on start
 using (var scope = app.Services.CreateScope())

@@ -252,6 +252,13 @@ public class UpdateServerFactory : WebApplicationFactory<Program>, IDisposable
     {
         Directory.CreateDirectory(_root);
         builder.UseEnvironment("Testing");
+
+        // UseSetting lands in host configuration, which Program can read before
+        // the host is built; ConfigureAppConfiguration alone would be too late
+        // for the data protection key path.
+        foreach (var (key, value) in Settings)
+            builder.UseSetting(key, value);
+
         builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(Settings));
     }
 

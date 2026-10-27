@@ -132,11 +132,14 @@ Settings come from `appsettings.{Environment}.json` or environment variables (`_
 | `ConnectionStrings:Default` | `Data Source=/data/updateserver.db` | SQLite connection string |
 | `Storage:BinariesPath` | `/data/binaries` | Where uploaded binaries are stored |
 | `Storage:MaxUploadBytes` | `1073741824` (1 GiB) | Largest accepted upload |
+| `Storage:KeysPath` | `keys` beside `BinariesPath` | Data protection keys |
 | `Auth:ApiKey` | — | Key for the `X-API-Key` header; uploads are rejected if unset |
 | `Auth:ForwardAuth` | `false` | Require a `Remote-User` header on UI routes |
 | `Auth:TrustedProxies` | — | Comma-separated addresses or CIDR ranges allowed to assert `Remote-User` |
 
 `Storage:MaxUploadBytes` is applied to the Kestrel request body limit, the multipart form limit, and the web UI's file picker together, so the API and the UI always accept the same size. Raise it before pushing installers larger than 1 GiB.
+
+Data protection keys default to a `keys` directory next to the binaries, so they live on the same volume and survive the container being recreated. Without that, every restart invalidates the antiforgery tokens browsers are holding and the log fills with `The antiforgery token could not be decrypted`. If the directory cannot be created the server still starts, logs a warning, and falls back to keys that live only as long as the container.
 
 ## Deployment
 

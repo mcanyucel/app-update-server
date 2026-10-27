@@ -35,6 +35,22 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
     public static string GetBinariesPath(IConfiguration config) =>
         config["Storage:BinariesPath"] ?? "/data/binaries";
 
+    /// <summary>
+    /// Data protection keys live next to the binaries so they survive the
+    /// container being recreated; otherwise every restart invalidates the
+    /// antiforgery tokens browsers are still holding.
+    /// </summary>
+    public static string GetKeysPath(IConfiguration config)
+    {
+        var configured = config["Storage:KeysPath"];
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured;
+
+        var binaries = GetBinariesPath(config);
+        var dataRoot = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(binaries));
+        return Path.Combine(string.IsNullOrEmpty(dataRoot) ? "." : dataRoot, "keys");
+    }
+
     public static long GetMaxUploadBytes(IConfiguration config) =>
         config.GetValue<long?>("Storage:MaxUploadBytes") ?? DefaultMaxUploadBytes;
 
