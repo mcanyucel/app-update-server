@@ -35,6 +35,8 @@ All endpoints under `/api/update`:
 | DELETE | `/api/update/apps/{slug}` | API Key | Delete app |
 | DELETE | `/api/update/apps/{slug}/versions/{id}` | API Key | Delete specific version |
 
+`GET /health` (public) reports the state of the database and the binaries directory — `200 Healthy`, or `503` when either is unavailable. The Docker image uses it as its `HEALTHCHECK`.
+
 ### Upload Request
 
 `POST /api/update/upload` takes a multipart form:
@@ -66,6 +68,14 @@ Re-uploading an existing version replaces its binary, hash, notes, and timestamp
 **Binary integrity** — all uploaded binaries are SHA-256 hashed at upload time. Clients should verify the downloaded binary matches the `sha256Hash` field in the version check response before installing.
 
 **API key** — the upload and management endpoints require an `X-API-Key` header. Use a strong random value and pass it via environment variable, never hardcode it.
+
+**Forward auth** — with `Auth:ForwardAuth` enabled, UI routes require a `Remote-User` header, which your SSO proxy sets after authenticating the user. That header is only meaningful if the request genuinely came from the proxy, so also set `Auth:TrustedProxies` to the proxy's address or range:
+
+```yaml
+- Auth__TrustedProxies=172.18.0.0/16
+```
+
+Without it the server accepts `Remote-User` from any source — anything able to reach the container directly (another container on the same Docker network, or a published port) can authenticate itself — and logs a warning at startup. List IPv4 and IPv6 forms separately if your proxy may use either; `docker network inspect <network>` gives you the subnet.
 
 ## CLI
 
@@ -114,6 +124,7 @@ Settings come from `appsettings.{Environment}.json` or environment variables (`_
 | `Storage:MaxUploadBytes` | `1073741824` (1 GiB) | Largest accepted upload |
 | `Auth:ApiKey` | — | Key for the `X-API-Key` header; uploads are rejected if unset |
 | `Auth:ForwardAuth` | `false` | Require a `Remote-User` header on UI routes |
+| `Auth:TrustedProxies` | — | Comma-separated addresses or CIDR ranges allowed to assert `Remote-User` |
 
 `Storage:MaxUploadBytes` is applied to the Kestrel request body limit, the multipart form limit, and the web UI's file picker together, so the API and the UI always accept the same size. Raise it before pushing installers larger than 1 GiB.
 
@@ -132,7 +143,9 @@ The web UI should be placed behind a reverse proxy with authentication. The foll
 - `POST /api/update` — version check
 - `GET /api/update/download/*` — binary download
 
-The upload endpoint (`/api/update/upload`) is protected by the API key header `X-API-Key` and does not require SSO.
+The upload endpoint (`/api/update/upload`) is protected by the API key header `X-API-Key` and does not require SSO. The other management endpoints (`/api/update/apps/...`) do sit behind forward auth, so `aus list`, `versions`, `rollback` and the delete commands need a proxy bypass rule for them if you run them against a protected server.
+
+TLS is expected to terminate at the proxy — the app serves plain HTTP on port 8080 and does not redirect. If your proxy enforces a request body limit of its own (nginx defaults to 1 MB via `client_max_body_size`), raise it to match `Storage:MaxUploadBytes` or uploads will fail before reaching the server.
 
 ## Development
 
@@ -146,6 +159,14 @@ dotnet run
 ```
 
 The development environment uses a local SQLite database and binaries folder. No Docker required for development.
+
+### Tests
+
+```bash
+dotnet test
+```
+
+`AppUpdateServer.Tests` covers `UpdateService` against a temporary SQLite database and binaries directory, and drives the HTTP pipeline through `WebApplicationFactory` for the upload form, the API key check, and the forward-auth middleware.
 
 ## License
 

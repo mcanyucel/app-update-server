@@ -28,9 +28,12 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
 {
     public const long DefaultMaxUploadBytes = 1024L * 1024 * 1024; // 1 GiB
 
-    private string BinariesPath => config["Storage:BinariesPath"] ?? "/data/binaries";
+    private string BinariesPath => GetBinariesPath(config);
 
     public long MaxUploadBytes => GetMaxUploadBytes(config);
+
+    public static string GetBinariesPath(IConfiguration config) =>
+        config["Storage:BinariesPath"] ?? "/data/binaries";
 
     public static long GetMaxUploadBytes(IConfiguration config) =>
         config.GetValue<long?>("Storage:MaxUploadBytes") ?? DefaultMaxUploadBytes;

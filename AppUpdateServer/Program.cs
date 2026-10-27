@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using AppUpdateServer.Components;
 using AppUpdateServer.Data;
 using AppUpdateServer.Services;
@@ -25,6 +27,7 @@ builder.Services.AddDbContext<AppDbContext>(opts =>
 builder.Services.AddScoped<UpdateService>();
 builder.Services.AddControllers();
 builder.Services.AddMudServices();
+builder.Services.AddHealthChecks().AddCheck<StorageHealthCheck>("storage");
 
 // Add services to the container.
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
@@ -46,31 +49,46 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+
+// TLS is terminated at the reverse proxy, so the app itself only ever speaks
+// plain HTTP — UseHttpsRedirection() would have nothing to redirect to.
+
+var forwardAuth = app.Configuration.GetValue<bool>("Auth:ForwardAuth");
+var trustedProxies = ParseTrustedProxies(app.Configuration["Auth:TrustedProxies"]);
+
+if (forwardAuth && trustedProxies.Length == 0)
+    app.Logger.LogWarning(
+        "Auth:ForwardAuth is enabled but Auth:TrustedProxies is empty — anything that can reach "
+            + "this container directly can authenticate by sending its own Remote-User header. "
+            + "Set Auth:TrustedProxies to the address range of your reverse proxy."
+    );
 
 // Add a middleware to check forward-auth
 app.Use(
     async (context, next) =>
     {
-        var forwardAuth = app.Configuration.GetValue<bool>("Auth:ForwardAuth");
-        if (forwardAuth)
+        if (forwardAuth && RequiresForwardAuth(context))
         {
-            // Only protect UI routes, not public API endpoints
-            var path = context.Request.Path.Value ?? "";
-            var isPublicApi =
-                path.StartsWith("/api/update/download")
-                || (path == "/api/update" && context.Request.Method == "POST");
-            var isUploadApi = path == "/api/update/upload";
-
-            if (!isPublicApi && !isUploadApi)
+            // The Remote-User header is only meaningful when the request actually
+            // came from the proxy that authenticated it.
+            if (trustedProxies.Length > 0 && !IsFromTrustedProxy(context, trustedProxies))
             {
-                var remoteUser = context.Request.Headers["Remote-User"].ToString();
-                if (string.IsNullOrEmpty(remoteUser))
-                {
-                    context.Response.StatusCode = 401;
-                    await context.Response.WriteAsync("Unauthorized");
-                    return;
-                }
+                app.Logger.LogWarning(
+                    "Rejected {Path}: Remote-User is only trusted from a configured proxy, not {Address}",
+                    context.Request.Path,
+                    context.Connection.RemoteIpAddress
+                );
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync("Unauthorized");
+                return;
+            }
+
+            var remoteUser = context.Request.Headers["Remote-User"].ToString();
+            if (string.IsNullOrEmpty(remoteUser))
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync("Unauthorized");
+                return;
             }
         }
         await next();
@@ -81,8 +99,54 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();
+
+// Routes that installed apps, the CLI and container monitoring must reach
+// without going through SSO. Upload and the management endpoints under
+// /api/update carry their own X-API-Key check instead.
+static bool RequiresForwardAuth(HttpContext context)
+{
+    var path = context.Request.Path.Value ?? "";
+    if (path.StartsWith("/api/update/download") || path == "/health")
+        return false;
+    if (path == "/api/update" && HttpMethods.IsPost(context.Request.Method))
+        return false;
+    return path != "/api/update/upload";
+}
+
+static bool IsFromTrustedProxy(HttpContext context, IPNetwork[] trustedProxies)
+{
+    var address = context.Connection.RemoteIpAddress;
+    if (address is null)
+        return false;
+    if (address.IsIPv4MappedToIPv6)
+        address = address.MapToIPv4();
+    return trustedProxies.Any(network => network.Contains(address));
+}
+
+// Accepts CIDR ranges ("172.18.0.0/16") and bare addresses ("10.0.0.5").
+static IPNetwork[] ParseTrustedProxies(string? configured) =>
+    (configured ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(entry =>
+        {
+            if (IPNetwork.TryParse(entry, out var network))
+                return network;
+            if (IPAddress.TryParse(entry, out var address))
+                return new IPNetwork(
+                    address,
+                    address.AddressFamily == AddressFamily.InterNetworkV6 ? 128 : 32
+                );
+            throw new InvalidOperationException(
+                $"Auth:TrustedProxies contains an invalid entry: '{entry}'"
+            );
+        })
+        .ToArray();
+
+// Exposed so the integration tests can spin the app up with WebApplicationFactory.
+public partial class Program;
