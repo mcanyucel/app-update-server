@@ -75,7 +75,17 @@ Re-uploading an existing version replaces its binary, hash, notes, and timestamp
 - Auth__TrustedProxies=172.18.0.0/16
 ```
 
-Without it the server accepts `Remote-User` from any source — anything able to reach the container directly (another container on the same Docker network, or a published port) can authenticate itself — and logs a warning at startup. List IPv4 and IPv6 forms separately if your proxy may use either; `docker network inspect <network>` gives you the subnet.
+Without it the server accepts `Remote-User` from any source — anything able to reach the container directly (another container on the same Docker network, or a published port) can authenticate itself — and logs a warning at startup.
+
+Use the address of the proxy that forwards the request, which is not necessarily the service that authenticated the user: with Caddy's `forward_auth`, Caddy queries Authelia and then forwards the request itself, so Caddy's address is the one to trust. `docker network inspect <network>` lists each container's address.
+
+A bare address (`172.18.0.11`) matches exactly. A CIDR range trusts every container in it, and **host bits are masked off** — `172.18.0.11/16` silently means `172.18.0.0/16`, the whole network, so write `/32` or no prefix if you mean one host. Docker assigns these addresses dynamically; if your proxy's address changes, the rejection is logged with the address the server actually saw:
+
+```
+Rejected /: Remote-User is only trusted from a configured proxy, not 172.18.0.19
+```
+
+IPv4-mapped IPv6 addresses are normalised before matching, but list IPv4 and IPv6 forms separately if your proxy may connect over either.
 
 ## CLI
 

@@ -7,9 +7,10 @@ services:
       - Auth__ApiKey=${APP_UPDATE_SERVER_API_KEY}
       # Largest accepted upload, in bytes. Defaults to 1 GiB.
       # - Storage__MaxUploadBytes=2147483648
-      # Only trust Remote-User from your reverse proxy. Find the range with
-      # `docker network inspect proxy`.
-      # - Auth__TrustedProxies=172.18.0.0/16
+      # Only trust Remote-User from your reverse proxy's own address — find it
+      # with `docker network inspect proxy`. A bare address matches that host
+      # exactly; a CIDR range trusts every container in it.
+      # - Auth__TrustedProxies=172.18.0.11
     volumes:
       - app-update-server-data:/data
     networks:
