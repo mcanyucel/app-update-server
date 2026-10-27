@@ -223,12 +223,17 @@ else
     private long _uploadTotalBytes;
     private int _uploadAttempt;
 
-    /// <summary>A file can only be picked once the version it belongs to is valid.</summary>
-    private bool CanChooseFile =>
-        !_uploading && UpdateService.IsValidVersionString(_uploadVersion.Trim());
+    private bool VersionIsValid => UpdateService.IsValidVersionString(_uploadVersion.Trim());
 
+    /// <summary>A file can only be picked once the version it belongs to is valid.</summary>
+    private bool CanChooseFile => !_uploading && VersionIsValid;
+
+    /// <summary>
+    /// Only about the version itself: keying this off CanChooseFile claimed the
+    /// version was malformed for the duration of every upload.
+    /// </summary>
     private string? VersionMessage =>
-        string.IsNullOrWhiteSpace(_uploadVersion) || CanChooseFile
+        string.IsNullOrWhiteSpace(_uploadVersion) || VersionIsValid
             ? null
             : UpdateService.InvalidVersionMessage;
 
