@@ -33,14 +33,19 @@
     gap: 0.25rem;
 }
 
-.app-footer {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* In the header rather than a footer band: always visible, and it cannot
+   push the shell past the viewport height. */
+.app-version {
+    display: inline-flex;
+    align-items: baseline;
     gap: 0.4rem;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid var(--colorNeutralStroke3);
+    white-space: nowrap;
     font-size: var(--fontSizeBase200);
+    color: var(--colorNeutralForeground3);
+}
+
+.app-version-commit {
+    font-family: var(--fontFamilyMonospace);
 }
 
 .app-main {
@@ -318,6 +323,17 @@ code {
 }
 
 @media (max-width: 640px) {
+    /* Keep the header on one line: the version survives, the sha does not. */
+    .app-version-commit {
+        display: none;
+    }
+
+    .app-brand span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .page-head {
         flex-direction: column;
         align-items: stretch;

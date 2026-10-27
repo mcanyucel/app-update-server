@@ -9,6 +9,13 @@
                 <span>App Update Server</span>
             </a>
             <div class="app-header-actions">
+                <span class="app-version" title="@VersionTooltip">
+                    @BuildInfo.Display
+                    @if (!string.IsNullOrEmpty(BuildInfo.ShortCommit))
+                    {
+                        <span class="app-version-commit">@BuildInfo.ShortCommit</span>
+                    }
+                </span>
                 <FluentButton Appearance="ButtonAppearance.Transparent"
                               IconOnly="true"
                               Title="@(_dark ? "Switch to light theme" : "Switch to dark theme")"
@@ -32,16 +39,6 @@
         </main>
     </FluentLayoutItem>
 
-    <FluentLayoutItem Area="LayoutArea.Footer">
-        <footer class="app-footer">
-            <span class="muted" title="@BuildInfo.Commit">@BuildInfo.Display</span>
-            @if (!string.IsNullOrEmpty(BuildInfo.ShortCommit))
-            {
-                <span class="muted">·</span>
-                <code class="muted" title="@BuildInfo.Commit">@BuildInfo.ShortCommit</code>
-            }
-        </footer>
-    </FluentLayoutItem>
 </FluentLayout>
 
 <FluentToastProvider />
@@ -50,6 +47,9 @@
 
 @code {
     private bool _dark;
+
+    private static string VersionTooltip =>
+        BuildInfo.Commit is null ? BuildInfo.Display : $"{BuildInfo.Display} · {BuildInfo.Commit}";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

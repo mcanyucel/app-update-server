@@ -64,7 +64,7 @@ else
                              Placeholder="e.g. 3.2.0.0"
                              Required="true"
                              Message="@VersionMessage"
-                             MessageState="MessageState.Error"
+                             MessageState="@VersionMessageState"
                              Width="100%" />
             <FluentTextArea @bind-Value="_uploadNotes"
                             Label="Release notes"
@@ -231,6 +231,11 @@ else
         string.IsNullOrWhiteSpace(_uploadVersion) || CanChooseFile
             ? null
             : UpdateService.InvalidVersionMessage;
+
+    // Leaving MessageState set with no message makes the field render a
+    // generic "An error occurred" on a page the user has not touched yet.
+    private MessageState? VersionMessageState =>
+        VersionMessage is null ? null : MessageState.Error;
 
     protected override async Task OnInitializedAsync()
     {
