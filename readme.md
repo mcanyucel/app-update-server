@@ -146,6 +146,25 @@ Copy `docker-compose.example.yml` to `docker-compose.yml` and `.env.example` to 
 docker compose up -d
 ```
 
+To pick up a new release, `docker compose pull && docker compose up -d` — `up -d` alone will not fetch a new image behind an unchanged tag.
+
+### Releasing
+
+Pushing to `main` only runs the tests. Images are published when a `v*` tag is pushed:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+That publishes `1.2.3`, `1.2`, `1`, `latest` and `sha-<commit>`. The git tag is also the application version: CI passes it to the Docker build, which stamps it into the assembly, so there is no version number in the repository to bump by hand. The running version is shown in the UI footer and logged at startup:
+
+```
+App Update Server v1.2.3 · abc1234 starting
+```
+
+Local and non-CI builds report `dev build` instead.
+
 ### Reverse proxy
 
 The web UI should be placed behind a reverse proxy with authentication. The following paths must remain publicly accessible for installed apps to function:

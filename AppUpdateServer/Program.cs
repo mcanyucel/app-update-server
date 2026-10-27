@@ -43,6 +43,8 @@ builder
 
 var app = builder.Build();
 
+app.Logger.LogInformation("App Update Server {Version} starting", BuildInfo.DisplayWithCommit);
+
 // Perform auto-migration on start
 using (var scope = app.Services.CreateScope())
 {

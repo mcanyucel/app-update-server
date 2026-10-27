@@ -7,7 +7,12 @@ COPY AppUpdateServer.Cli/AppUpdateServer.Cli.csproj AppUpdateServer.Cli/
 RUN dotnet restore AppUpdateServer/AppUpdateServer.csproj
 
 COPY AppUpdateServer/ AppUpdateServer/
-RUN dotnet publish AppUpdateServer/AppUpdateServer.csproj -c Release -o /app/publish
+
+# Supplied by CI from the git tag; stays 0.0.0-dev for local builds.
+ARG VERSION=0.0.0-dev
+ARG REVISION=""
+RUN dotnet publish AppUpdateServer/AppUpdateServer.csproj -c Release -o /app/publish \
+    -p:Version=${VERSION} -p:SourceRevisionId=${REVISION}
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app

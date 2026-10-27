@@ -33,6 +33,16 @@
     gap: 0.25rem;
 }
 
+.app-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--colorNeutralStroke3);
+    font-size: var(--fontSizeBase200);
+}
+
 .app-main {
     width: min(1120px, 100%);
     margin-inline: auto;

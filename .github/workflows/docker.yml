@@ -1,10 +1,11 @@
 name: Build and Push Docker Image
 
+# Tests run on every push to main; only a v* tag publishes an image, so
+# documentation and config commits no longer trigger a deployment.
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
+    tags: ['v*']
 
 env:
   REGISTRY: ghcr.io
@@ -36,6 +37,7 @@ jobs:
 
   build-and-push:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -57,10 +59,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          # v1.2.3 publishes 1.2.3, 1.2, 1, latest and sha-<commit>.
+          # There is no longer a :main tag — deployments track :latest or a pin.
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
             type=sha,prefix=sha-
 
       - name: Build and push
@@ -69,5 +74,10 @@ jobs:
           context: .
           file: AppUpdateServer/Dockerfile
           push: true
+          # The git tag is the version: it is baked into the assembly so the
+          # running container can report what it is.
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            REVISION=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

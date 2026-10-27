@@ -1,6 +1,7 @@
 services:
   app-update-server:
-    image: ghcr.io/mcanyucel/app-update-server:main
+    # :latest tracks the newest v* tag. Pin to :1 or :1.2.3 to control upgrades.
+    image: ghcr.io/mcanyucel/app-update-server:latest
     restart: unless-stopped
     environment:
       - ASPNETCORE_ENVIRONMENT=Production

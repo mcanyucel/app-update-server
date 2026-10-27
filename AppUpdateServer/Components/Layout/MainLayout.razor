@@ -32,6 +32,16 @@
         </main>
     </FluentLayoutItem>
 
+    <FluentLayoutItem Area="LayoutArea.Footer">
+        <footer class="app-footer">
+            <span class="muted" title="@BuildInfo.Commit">@BuildInfo.Display</span>
+            @if (!string.IsNullOrEmpty(BuildInfo.ShortCommit))
+            {
+                <span class="muted">·</span>
+                <code class="muted" title="@BuildInfo.Commit">@BuildInfo.ShortCommit</code>
+            }
+        </footer>
+    </FluentLayoutItem>
 </FluentLayout>
 
 <FluentToastProvider />
