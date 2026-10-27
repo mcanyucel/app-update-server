@@ -57,9 +57,14 @@ else
 
         <div class="upload-fields">
             <FluentTextInput @bind-Value="_uploadVersion"
+                             @bind-Value:after="StateHasChanged"
+                             Immediate="true"
+                             ImmediateDelay="200"
                              Label="Version"
                              Placeholder="e.g. 3.2.0.0"
                              Required="true"
+                             Message="@VersionMessage"
+                             MessageState="MessageState.Error"
                              Width="100%" />
             <FluentTextArea @bind-Value="_uploadNotes"
                             Label="Release notes"
@@ -68,20 +73,35 @@ else
                             Width="100%" />
         </div>
 
-        <FluentInputFile Id="installer-picker"
+        @* Keyed so every attempt gets a fresh control: the component keeps its
+           "Completed" progress state and the previously picked file otherwise. *@
+        <FluentInputFile @key="_uploadAttempt"
+                         Id="installer-picker"
                          Mode="InputFileMode.Stream"
                          Multiple="false"
                          MaximumFileSize="Updates.MaxUploadBytes"
                          BufferSize="262144"
-                         DragDropZoneVisible="true"
+                         DragDropZoneVisible="@CanChooseFile"
+                         Disabled="@(!CanChooseFile)"
                          OnFileUploaded="OnFileUploaded"
                          OnFileError="OnFileError"
-                         Class="dropzone">
+                         OnCompleted="OnUploadCompleted"
+                         Class="@(CanChooseFile ? "dropzone" : "dropzone dropzone-disabled")">
             <ChildContent>
                 <div class="dropzone-inner">
-                    <FluentIcon Value="@(new Icons.Regular.Size24.ArrowUpload())" Color="Color.Primary" />
-                    <span>Drop the installer here, or <strong>browse</strong></span>
-                    <span class="muted">Up to @Format.Size(Updates.MaxUploadBytes)</span>
+                    @if (CanChooseFile)
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size24.ArrowUpload())" Color="Color.Primary" />
+                        <span>Drop the installer here, or <strong>browse</strong></span>
+                        <span class="muted">Up to @Format.Size(Updates.MaxUploadBytes)</span>
+                    }
+                    else
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size24.ArrowUpload())" Color="Color.Disabled" />
+                        <span class="muted">
+                            @(_uploading ? "Upload in progress…" : "Enter a version above to choose a file")
+                        </span>
+                    }
                 </div>
             </ChildContent>
         </FluentInputFile>
@@ -201,6 +221,16 @@ else
     private int _progress;
     private long _uploadedBytes;
     private long _uploadTotalBytes;
+    private int _uploadAttempt;
+
+    /// <summary>A file can only be picked once the version it belongs to is valid.</summary>
+    private bool CanChooseFile =>
+        !_uploading && UpdateService.IsValidVersionString(_uploadVersion.Trim());
+
+    private string? VersionMessage =>
+        string.IsNullOrWhiteSpace(_uploadVersion) || CanChooseFile
+            ? null
+            : UpdateService.InvalidVersionMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -289,6 +319,13 @@ else
     }
 
     private void OnFileError(FluentInputFileErrorEventArgs error) => _uploadError = error.ErrorMessage;
+
+    /// <summary>
+    /// Runs after the component has finished with the selection — the last
+    /// thing it does — so replacing it here is safe. Without this the control
+    /// stays on "Completed" and ignores the next file.
+    /// </summary>
+    private void OnUploadCompleted(IEnumerable<FluentInputFileEventArgs> files) => _uploadAttempt++;
 
     // ── Actions ───────────────────────────────────────────────────────────────
 

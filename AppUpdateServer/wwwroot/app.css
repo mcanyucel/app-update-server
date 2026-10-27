@@ -240,6 +240,11 @@ code {
     margin-bottom: 1rem;
 }
 
+.dropzone-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .dropzone-inner {
     display: flex;
     flex-direction: column;
