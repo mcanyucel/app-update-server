@@ -1,0 +1,315 @@
+/* ── Shell ──────────────────────────────────────────────────────────────── */
+
+.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    height: 56px;
+    padding: 0 clamp(1rem, 4vw, 2rem);
+    border-bottom: 1px solid var(--colorNeutralStroke2);
+    background: var(--colorNeutralBackground1);
+}
+
+.app-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: var(--fontSizeBase400);
+    font-weight: var(--fontWeightSemibold);
+    color: var(--colorNeutralForeground1);
+    text-decoration: none;
+    border-radius: var(--borderRadiusMedium);
+    padding: 0.25rem 0.4rem;
+}
+
+.app-brand:hover {
+    background: var(--colorNeutralBackground1Hover);
+}
+
+.app-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.app-main {
+    width: min(1120px, 100%);
+    margin-inline: auto;
+    padding: clamp(1rem, 4vw, 2.25rem) clamp(1rem, 4vw, 2rem) 4rem;
+}
+
+/* ── Page furniture ─────────────────────────────────────────────────────── */
+
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    font-size: var(--fontSizeBase200);
+    color: var(--colorNeutralForeground3);
+}
+
+.breadcrumb a {
+    color: var(--colorNeutralForeground3);
+    text-decoration: none;
+}
+
+.breadcrumb a:hover {
+    color: var(--colorBrandForegroundLink);
+    text-decoration: underline;
+}
+
+.page-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.page-title {
+    margin: 0;
+    font-size: var(--fontSizeHero700);
+    font-weight: var(--fontWeightSemibold);
+    line-height: 1.2;
+}
+
+.page-subtitle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.35rem 0 0;
+    font-size: var(--fontSizeBase300);
+    color: var(--colorNeutralForeground3);
+}
+
+.muted {
+    color: var(--colorNeutralForeground3);
+}
+
+code {
+    font-family: var(--fontFamilyMonospace);
+    font-size: 0.9em;
+}
+
+/* ── Cards and panels ───────────────────────────────────────────────────── */
+
+.panel {
+    display: block;
+    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.panel-title {
+    margin: 0 0 0.35rem;
+    font-size: var(--fontSizeBase500);
+    font-weight: var(--fontWeightSemibold);
+}
+
+.panel-hint {
+    margin: 0 0 1rem;
+    font-size: var(--fontSizeBase200);
+    color: var(--colorNeutralForeground3);
+}
+
+.panel-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.panel-message {
+    margin-top: 1rem;
+}
+
+.create-panel .slug-preview {
+    margin: 0.6rem 0 0;
+    font-size: var(--fontSizeBase200);
+    color: var(--colorNeutralForeground3);
+}
+
+/* ── Application grid ───────────────────────────────────────────────────── */
+
+.filter-box {
+    margin-bottom: 1rem;
+    max-width: 22rem;
+}
+
+.app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.app-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--colorNeutralStroke2);
+    border-radius: var(--borderRadiusLarge);
+    background: var(--colorNeutralBackground1);
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.app-card:hover {
+    border-color: var(--colorBrandStroke1);
+    box-shadow: var(--shadow4);
+    transform: translateY(-1px);
+}
+
+.app-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.app-card-head h2 {
+    margin: 0;
+    font-size: var(--fontSizeBase400);
+    font-weight: var(--fontWeightSemibold);
+}
+
+.app-card-slug {
+    color: var(--colorNeutralForeground3);
+}
+
+.app-card-body {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: var(--fontSizeBase200);
+}
+
+.app-card-foot {
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--colorNeutralStroke3);
+    font-size: var(--fontSizeBase200);
+}
+
+/* ── States ─────────────────────────────────────────────────────────────── */
+
+.centered-state {
+    display: flex;
+    justify-content: center;
+    padding: 3rem 0;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 4rem 1rem;
+    text-align: center;
+    border: 1px dashed var(--colorNeutralStroke2);
+    border-radius: var(--borderRadiusLarge);
+}
+
+.empty-state h2 {
+    margin: 0;
+    font-size: var(--fontSizeBase500);
+}
+
+.empty-state p {
+    margin: 0;
+    max-width: 38ch;
+    color: var(--colorNeutralForeground3);
+}
+
+/* ── Upload ─────────────────────────────────────────────────────────────── */
+
+.upload-fields {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.dropzone-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 1.75rem 1rem;
+    text-align: center;
+}
+
+.upload-progress {
+    margin-top: 1rem;
+}
+
+/* ── Endpoints ──────────────────────────────────────────────────────────── */
+
+.endpoint-list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.5rem 1.25rem;
+    align-items: center;
+    margin: 0;
+}
+
+.endpoint-list dt {
+    font-size: var(--fontSizeBase200);
+    color: var(--colorNeutralForeground3);
+}
+
+.endpoint-list dd {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    min-width: 0;
+}
+
+.endpoint-list dd code {
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+.method {
+    display: inline-block;
+    min-width: 3.2rem;
+    font-family: var(--fontFamilyMonospace);
+    font-size: 0.75rem;
+    font-weight: var(--fontWeightSemibold);
+    color: var(--colorBrandForeground1);
+}
+
+/* ── Version table ──────────────────────────────────────────────────────── */
+
+.cell-version,
+.cell-hash,
+.cell-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.cell-actions {
+    justify-content: flex-end;
+}
+
+.cell-notes {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .page-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .endpoint-list {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+    }
+}

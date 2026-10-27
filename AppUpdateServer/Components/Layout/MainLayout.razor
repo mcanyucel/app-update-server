@@ -1,17 +1,58 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject IThemeService Theme
 
-<MudThemeProvider DefaultScrollbar="true" />
-<MudPopoverProvider />
-<MudDialogProvider />
-<MudSnackbarProvider />
+<FluentLayout Class="app-shell">
+    <FluentLayoutItem Area="LayoutArea.Header" Sticky="true">
+        <header class="app-header">
+            <a class="app-brand" href="/">
+                <FluentIcon Value="@(new Icons.Filled.Size24.ArrowSyncCircle())" Color="Color.Primary" />
+                <span>App Update Server</span>
+            </a>
+            <div class="app-header-actions">
+                <FluentButton Appearance="ButtonAppearance.Transparent"
+                              IconOnly="true"
+                              Title="@(_dark ? "Switch to light theme" : "Switch to dark theme")"
+                              OnClick="ToggleTheme">
+                    @if (_dark)
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size20.WeatherSunny())" />
+                    }
+                    else
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size20.WeatherMoon())" />
+                    }
+                </FluentButton>
+            </div>
+        </header>
+    </FluentLayoutItem>
 
-<MudLayout>
-    <MudAppBar Elevation="1">
-        <MudText Typo="Typo.h6">App Update Server</MudText>
-    </MudAppBar>
-    <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+    <FluentLayoutItem Area="LayoutArea.Content">
+        <main class="app-main">
             @Body
-        </MudContainer>
-    </MudMainContent>
-</MudLayout>
+        </main>
+    </FluentLayoutItem>
+
+</FluentLayout>
+
+<FluentToastProvider />
+<FluentDialogProvider />
+<FluentTooltipProvider />
+
+@code {
+    private bool _dark;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _dark = await Theme.IsDarkModeAsync();
+        StateHasChanged();
+    }
+
+    private async Task ToggleTheme()
+    {
+        _dark = !_dark;
+        await Theme.SetThemeAsync(_dark ? ThemeMode.Dark : ThemeMode.Light);
+    }
+}

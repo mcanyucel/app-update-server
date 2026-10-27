@@ -2,165 +2,244 @@
 @rendermode InteractiveServer
 @inject UpdateService Updates
 @inject NavigationManager Nav
-@using AppUpdateServer.Services
+@inject IDialogService Dialogs
+@inject INotificationService Notifications
+@inject IJSRuntime JS
 
 <PageTitle>@(_app?.Name ?? Slug) — App Update Server</PageTitle>
 
-@if (_app is null)
+@if (_loading)
 {
-    <MudProgressCircular Indeterminate="true" />
+    <div class="centered-state">
+        <FluentSpinner />
+    </div>
+}
+else if (_app is null)
+{
+    <div class="empty-state">
+        <FluentIcon Value="@(new Icons.Regular.Size48.QuestionCircle())" Color="Color.Default" />
+        <h2>No application called “@Slug”</h2>
+        <FluentButton Appearance="ButtonAppearance.Primary" OnClick="@(() => Nav.NavigateTo("/"))">
+            Back to applications
+        </FluentButton>
+    </div>
 }
 else
 {
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
-        <div>
-            <MudText Typo="Typo.h4">@_app.Name</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">@_app.Slug</MudText>
-        </div>
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteApp">
-            Delete App
-        </MudButton>
-    </MudStack>
+    <nav class="breadcrumb">
+        <a href="/">Applications</a>
+        <FluentIcon Value="@(new Icons.Regular.Size16.ChevronRight())" Color="Color.Default" />
+        <span>@_app.Name</span>
+    </nav>
 
-    <MudAlert Severity="Severity.Info" Class="mb-4">
-        <MudText><strong>POST</strong> /api/update — version check (public)</MudText>
-        <MudText><strong>GET</strong> /api/update/download/@_app.Slug/{version} — download (public)</MudText>
-    </MudAlert>
+    <div class="page-head">
+        <div>
+            <h1 class="page-title">@_app.Name</h1>
+            <p class="page-subtitle">
+                <code>@_app.Slug</code>
+                <span>· @_versions.Count @(_versions.Count == 1 ? "version" : "versions")</span>
+                @if (_versions.Count > 0)
+                {
+                    <span>· @Format.Size(_versions.Sum(v => v.FileSizeBytes)) stored</span>
+                }
+            </p>
+        </div>
+        <FluentButton Appearance="ButtonAppearance.Outline"
+                      IconStart="@(new Icons.Regular.Size20.Delete())"
+                      OnClick="DeleteApp">
+            Delete application
+        </FluentButton>
+    </div>
 
     <!-- Upload -->
-    <MudPaper Class="pa-6 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-4">Upload New Version</MudText>
-        <MudGrid>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_uploadVersion"
-                              Label="Version String"
-                              Placeholder="e.g. 3.2.0.0"
-                              Variant="Variant.Outlined" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_uploadNotes"
-                              Label="Release Notes"
-                              Placeholder="What changed?"
-                              Variant="Variant.Outlined"
-                              Lines="3" />
-            </MudItem>
-            <MudItem xs="12">
-                <InputFile OnChange="OnFileSelected" />
-            </MudItem>
-        </MudGrid>
+    <FluentCard Class="panel">
+        <h2 class="panel-title">Upload a new version</h2>
 
-        @if (!string.IsNullOrEmpty(_uploadError))
+        <div class="upload-fields">
+            <FluentTextInput @bind-Value="_uploadVersion"
+                             Label="Version"
+                             Placeholder="e.g. 3.2.0.0"
+                             Required="true"
+                             Width="100%" />
+            <FluentTextArea @bind-Value="_uploadNotes"
+                            Label="Release notes"
+                            Placeholder="What changed?"
+                            AutoResize="true"
+                            Width="100%" />
+        </div>
+
+        <FluentInputFile Id="installer-picker"
+                         Mode="InputFileMode.Stream"
+                         Multiple="false"
+                         MaximumFileSize="Updates.MaxUploadBytes"
+                         BufferSize="262144"
+                         DragDropZoneVisible="true"
+                         OnFileUploaded="OnFileUploaded"
+                         OnFileError="OnFileError"
+                         @bind-ProgressPercent="_progress"
+                         Class="dropzone">
+            <ChildContent>
+                <div class="dropzone-inner">
+                    <FluentIcon Value="@(new Icons.Regular.Size24.ArrowUpload())" Color="Color.Primary" />
+                    <span>Drop the installer here, or <strong>browse</strong></span>
+                    <span class="muted">Up to @Format.Size(Updates.MaxUploadBytes)</span>
+                </div>
+            </ChildContent>
+        </FluentInputFile>
+
+        @if (_uploading)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_uploadError</MudAlert>
-        }
-        @if (!string.IsNullOrEmpty(_uploadSuccess))
-        {
-            <MudAlert Severity="Severity.Success" Class="mt-3">@_uploadSuccess</MudAlert>
+            <FluentProgressBar Value="_progress" Class="upload-progress" />
+            <p class="muted">Uploading @_uploadingName… @_progress%</p>
         }
 
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   OnClick="UploadVersion" Disabled="_uploading" Class="mt-4">
-            @(_uploading ? "Uploading…" : "Upload Version")
-        </MudButton>
-    </MudPaper>
+        @if (_uploadError is not null)
+        {
+            <FluentMessageBar Intent="MessageBarIntent.Error" AllowDismiss="false" Class="panel-message">
+                @_uploadError
+            </FluentMessageBar>
+        }
+    </FluentCard>
+
+    <!-- Integration -->
+    <FluentCard Class="panel">
+        <h2 class="panel-title">Client integration</h2>
+        <p class="panel-hint">These endpoints stay public so installed apps can reach them without SSO.</p>
+        <dl class="endpoint-list">
+            <dt><span class="method">POST</span> version check</dt>
+            <dd>
+                <code>@($"{_origin}/api/update")</code>
+                @CopyButton($"{_origin}/api/update", "Version check URL")
+            </dd>
+            <dt><span class="method">GET</span> download</dt>
+            <dd>
+                <code>@($"{_origin}/api/update/download/{_app.Slug}/{{version}}")</code>
+                @CopyButton($"{_origin}/api/update/download/{_app.Slug}/", "Download URL")
+            </dd>
+        </dl>
+    </FluentCard>
 
     <!-- Version history -->
-    <MudPaper Class="pa-6">
-        <MudText Typo="Typo.h6" Class="mb-4">Version History</MudText>
+    <FluentCard Class="panel">
+        <h2 class="panel-title">Version history</h2>
+
         @if (_versions.Count == 0)
         {
-            <MudText Color="Color.Secondary">No versions uploaded yet.</MudText>
+            <p class="muted">No versions uploaded yet.</p>
         }
         else
         {
-            <MudTable Items="_versions" Hover="true" Striped="true">
-                <HeaderContent>
-                    <MudTh>Version</MudTh>
-                    <MudTh>Uploaded</MudTh>
-                    <MudTh>Size</MudTh>
-                    <MudTh>SHA-256</MudTh>
-                    <MudTh>Notes</MudTh>
-                    <MudTh></MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>
-                        <MudChip T="string" Color="@(context == _versions[0] ? Color.Success : Color.Default)" Size="Size.Small">
-                            @context.VersionString
-                        </MudChip>
-                    </MudTd>
-                    <MudTd>@context.UploadedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
-                    <MudTd>@FormatSize(context.FileSizeBytes)</MudTd>
-                    <MudTd>
-                        <MudTooltip Text="@context.Sha256Hash">
-                            <code>@context.Sha256Hash[..12]…</code>
-                        </MudTooltip>
-                    </MudTd>
-                    <MudTd>@context.ReleaseNotes</MudTd>
-                    <MudTd>
-                        <MudStack Row="true" Spacing="1">
-                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
-                                           Href="@($"/api/update/download/{_app.Slug}/{context.VersionString}")"
-                                           Target="_blank" />
-                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
-                                       OnClick="() => DeleteVersion(context.Id, context == _versions[0])">
-                                @(context == _versions[0] ? "Rollback" : "Delete")
-                            </MudButton>
-                        </MudStack>
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
+            <FluentDataGrid Items="_versions.AsQueryable()"
+                            TGridItem="VersionSummary"
+                            ShowHover="true"
+                            GridTemplateColumns="1.1fr 1fr 0.6fr 1.1fr 1.6fr 0.9fr">
+                <TemplateColumn Title="Version" TGridItem="VersionSummary">
+                    <div class="cell-version">
+                        <strong>@context.VersionString</strong>
+                        @if (context.Id == _versions[0].Id)
+                        {
+                            <FluentBadge Appearance="BadgeAppearance.Tint" Color="BadgeColor.Success">
+                                latest
+                            </FluentBadge>
+                        }
+                    </div>
+                </TemplateColumn>
+                <TemplateColumn Title="Uploaded" TGridItem="VersionSummary">
+                    <span title="@Format.Utc(context.UploadedAt)">@Format.Relative(context.UploadedAt)</span>
+                </TemplateColumn>
+                <TemplateColumn Title="Size" TGridItem="VersionSummary">
+                    @Format.Size(context.FileSizeBytes)
+                </TemplateColumn>
+                <TemplateColumn Title="SHA-256" TGridItem="VersionSummary">
+                    <div class="cell-hash">
+                        <code title="@context.Sha256Hash">@context.Sha256Hash[..12]…</code>
+                        @CopyButton(context.Sha256Hash, "SHA-256")
+                    </div>
+                </TemplateColumn>
+                <TemplateColumn Title="Notes" TGridItem="VersionSummary">
+                    <span class="cell-notes" title="@context.ReleaseNotes">@context.ReleaseNotes</span>
+                </TemplateColumn>
+                <TemplateColumn Title="" TGridItem="VersionSummary" Align="DataGridCellAlignment.End">
+                    <div class="cell-actions">
+                        <FluentButton Appearance="ButtonAppearance.Transparent"
+                                      IconOnly="true"
+                                      Title="Download"
+                                      OnClick="@(() => Download(context))">
+                            <FluentIcon Value="@(new Icons.Regular.Size20.ArrowDownload())" />
+                        </FluentButton>
+                        <FluentButton Appearance="ButtonAppearance.Transparent"
+                                      IconOnly="true"
+                                      Title="@(context.Id == _versions[0].Id ? "Roll back to the previous version" : "Delete this version")"
+                                      OnClick="@(() => DeleteVersion(context))">
+                            <FluentIcon Value="@(context.Id == _versions[0].Id
+                                                 ? new Icons.Regular.Size20.ArrowUndo()
+                                                 : (Icon)new Icons.Regular.Size20.Delete())" />
+                        </FluentButton>
+                    </div>
+                </TemplateColumn>
+            </FluentDataGrid>
         }
-    </MudPaper>
+    </FluentCard>
 }
 
 @code {
-    [Parameter] public string Slug { get; set; } = "";
+    [Parameter]
+    public string Slug { get; set; } = "";
 
     private AppSummary? _app;
     private List<VersionSummary> _versions = [];
+    private bool _loading = true;
+    private string _origin = "";
 
     private string _uploadVersion = "";
     private string _uploadNotes = "";
-    private IBrowserFile? _selectedFile;
-    private bool _uploading;
     private string? _uploadError;
-    private string? _uploadSuccess;
+    private string _uploadingName = "";
+    private bool _uploading;
+    private int _progress;
 
-    protected override async Task OnInitializedAsync() => await LoadData();
+    protected override async Task OnInitializedAsync()
+    {
+        _origin = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+        await LoadData();
+        _loading = false;
+    }
 
     private async Task LoadData()
     {
         _app = await Updates.GetAppBySlugAsync(Slug);
-        _versions = await Updates.GetVersionHistoryAsync(Slug);
+        _versions = _app is null ? [] : await Updates.GetVersionHistoryAsync(Slug);
     }
 
-    private void OnFileSelected(InputFileChangeEventArgs e) => _selectedFile = e.File;
+    // ── Upload ────────────────────────────────────────────────────────────────
 
-    private async Task UploadVersion()
+    private async Task OnFileUploaded(FluentInputFileEventArgs file)
     {
         _uploadError = null;
-        _uploadSuccess = null;
 
-        if (string.IsNullOrWhiteSpace(_uploadVersion))
-        { _uploadError = "Version string is required."; return; }
-        if (!UpdateService.IsValidVersionString(_uploadVersion.Trim()))
-        { _uploadError = UpdateService.InvalidVersionMessage; return; }
-        if (_selectedFile is null)
-        { _uploadError = "Please select a file."; return; }
+        var version = _uploadVersion.Trim();
+        if (!UpdateService.IsValidVersionString(version))
+        {
+            _uploadError = string.IsNullOrWhiteSpace(version)
+                ? "Enter a version before choosing a file."
+                : UpdateService.InvalidVersionMessage;
+            return;
+        }
 
         _uploading = true;
+        _uploadingName = file.Name;
         try
         {
-            await using var stream = _selectedFile.OpenReadStream(maxAllowedSize: Updates.MaxUploadBytes);
             var result = await Updates.UploadVersionAsync(
-                Slug, _uploadVersion.Trim(), _uploadNotes, stream, _selectedFile.Name);
+                Slug, version, _uploadNotes, file.Stream!, file.Name);
 
             if (result.Success)
             {
-                _uploadSuccess = $"Version {result.Version!.VersionString} uploaded successfully.";
+                await Notifications.ShowSuccessToastAsync(
+                    $"Version {result.Version!.VersionString} uploaded",
+                    $"{Format.Size(result.Version.FileSizeBytes)} · {file.Name}");
                 _uploadVersion = "";
                 _uploadNotes = "";
-                _selectedFile = null;
                 await LoadData();
             }
             else
@@ -175,28 +254,83 @@ else
         finally
         {
             _uploading = false;
+            _progress = 0;
+            _uploadingName = "";
         }
     }
 
-    private async Task DeleteVersion(int versionId, bool isLatest)
+    private void OnFileError(FluentInputFileErrorEventArgs error) => _uploadError = error.ErrorMessage;
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    private void Download(VersionSummary version) =>
+        Nav.NavigateTo($"/api/update/download/{Slug}/{version.VersionString}", forceLoad: true);
+
+    private async Task DeleteVersion(VersionSummary version)
     {
-        await Updates.DeleteVersionAsync(Slug, versionId);
+        var isLatest = version.Id == _versions[0].Id;
+        var hasPrevious = _versions.Count > 1;
+
+        var message = isLatest && hasPrevious
+            ? $"Version {version.VersionString} will be deleted and its binary removed. "
+              + $"Clients will be offered {_versions[1].VersionString} instead. This cannot be undone."
+            : $"Version {version.VersionString} will be deleted and its binary removed. This cannot be undone.";
+
+        var confirmation = await Dialogs.ShowConfirmationAsync(
+            message,
+            isLatest && hasPrevious ? "Roll back to the previous version?" : "Delete this version?",
+            isLatest && hasPrevious ? "Roll back" : "Delete",
+            "Cancel");
+
+        if (confirmation.Cancelled)
+            return;
+
+        await Updates.DeleteVersionAsync(Slug, version.Id);
         await LoadData();
-        if (isLatest)
-            _uploadSuccess = "Rolled back — previous version is now current.";
+
+        await Notifications.ShowSuccessToastAsync(
+            isLatest && hasPrevious ? "Rolled back" : "Version deleted",
+            isLatest && hasPrevious
+                ? $"{_versions.FirstOrDefault()?.VersionString} is now the current version."
+                : $"Version {version.VersionString} is gone.");
     }
 
     private async Task DeleteApp()
     {
-        if (_app is null) return;
+        if (_app is null)
+            return;
+
+        var confirmation = await Dialogs.ShowConfirmationAsync(
+            $"“{_app.Name}” and all {_versions.Count} of its "
+            + $"{(_versions.Count == 1 ? "version" : "versions")} will be deleted, including every stored "
+            + "binary. Installed clients will stop receiving updates. This cannot be undone.",
+            "Delete this application?",
+            "Delete",
+            "Cancel");
+
+        if (confirmation.Cancelled)
+            return;
+
         await Updates.DeleteAppAsync(_app.Id);
         Nav.NavigateTo("/");
     }
 
-    private static string FormatSize(long bytes) => bytes switch
+    // ── Clipboard ─────────────────────────────────────────────────────────────
+
+    private RenderFragment CopyButton(string value, string label) =>
+        @<FluentButton Appearance="ButtonAppearance.Transparent"
+                       IconOnly="true"
+                       Title="@($"Copy {label}")"
+                       OnClick="@(() => Copy(value, label))">
+            <FluentIcon Value="@(new Icons.Regular.Size16.Copy())" />
+        </FluentButton>;
+
+    private async Task Copy(string value, string label)
     {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
-        _ => $"{bytes / 1024.0 / 1024.0:F1} MB"
-    };
+        var copied = await JS.InvokeAsync<bool>("aus.copyToClipboard", value);
+        if (copied)
+            await Notifications.ShowSuccessToastAsync($"{label} copied", value, 2000);
+        else
+            await Notifications.ShowErrorToastAsync("Could not copy", "The browser blocked clipboard access.");
+    }
 }

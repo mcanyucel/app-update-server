@@ -1,81 +1,180 @@
-﻿@page "/"
+@page "/"
 @rendermode InteractiveServer
 @inject UpdateService Updates
 @inject NavigationManager Nav
-@inject IDialogService DialogService
-@using AppUpdateServer.Services
+@inject INotificationService Notifications
 
-<PageTitle>Apps — App Update Server</PageTitle>
+<PageTitle>Applications — App Update Server</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Tracked Applications</MudText>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Applications</h1>
+        <p class="page-subtitle">
+            @if (_apps is null)
+            {
+                <span>Loading…</span>
+            }
+            else
+            {
+                <span>@_apps.Count tracked @(_apps.Count == 1 ? "application" : "applications")</span>
+            }
+        </p>
+    </div>
+    <FluentButton Appearance="ButtonAppearance.Primary"
+                  IconStart="@(new Icons.Regular.Size20.Add())"
+                  OnClick="@(() => ShowCreate(true))">
+        New application
+    </FluentButton>
+</div>
+
+@if (_creating)
+{
+    <FluentCard Class="panel create-panel">
+        <h2 class="panel-title">Register a new application</h2>
+        <p class="panel-hint">
+            The slug is derived from the name and is what your installed apps use to check for updates.
+            Uploading to an unknown name creates the application automatically, so this is optional.
+        </p>
+        <FluentTextInput @bind-Value="_newName"
+                         @bind-Value:after="StateHasChanged"
+                         Label="Application name"
+                         Placeholder="e.g. Desktop Client"
+                         Autofocus="true"
+                         Width="100%" />
+        @if (!string.IsNullOrWhiteSpace(_newName))
+        {
+            <p class="slug-preview">Slug: <code>@UpdateService.GenerateSlug(_newName)</code></p>
+        }
+        <div class="panel-actions">
+            <FluentButton Appearance="ButtonAppearance.Primary" OnClick="CreateApp" Loading="_savingNew">
+                Create
+            </FluentButton>
+            <FluentButton Appearance="ButtonAppearance.Outline" OnClick="@(() => ShowCreate(false))">
+                Cancel
+            </FluentButton>
+        </div>
+    </FluentCard>
+}
 
 @if (_apps is null)
 {
-    <MudProgressCircular Indeterminate="true" />
+    <div class="centered-state">
+        <FluentSpinner />
+    </div>
 }
 else if (_apps.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">
-        No apps registered yet.
-    </MudAlert>
+    <div class="empty-state">
+        <FluentIcon Value="@(new Icons.Regular.Size48.Apps())" Color="Color.Default" />
+        <h2>No applications yet</h2>
+        <p>
+            Register one here, or just upload a version with the
+            <code>aus</code> CLI — the application is created automatically.
+        </p>
+        <FluentButton Appearance="ButtonAppearance.Primary"
+                      IconStart="@(new Icons.Regular.Size20.Add())"
+                      OnClick="@(() => ShowCreate(true))">
+            New application
+        </FluentButton>
+    </div>
 }
 else
 {
-    <MudGrid>
-        @foreach (var app in _apps)
-        {
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Class="cursor-pointer" @onclick="() => GoToApp(app.Slug)">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">@app.Name</MudText>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">@app.Slug</MudText>
-                        </CardHeaderContent>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        @if (app.Latest is not null)
-                        {
-                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@app.Latest.VersionString</MudChip>
-                            <MudText Typo="Typo.caption" Class="mt-2">
-                                @app.Latest.UploadedAt.ToString("yyyy-MM-dd HH:mm") UTC
-                            </MudText>
-                        }
-                        else
-                        {
-                            <MudText Color="Color.Secondary">No versions uploaded</MudText>
-                        }
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @app.TotalVersions version@(app.TotalVersions != 1 ? "s" : "") stored
-                        </MudText>
-                    </MudCardActions>
-                </MudCard>
-            </MudItem>
-        }
-    </MudGrid>
-}
+    @if (_apps.Count > 5)
+    {
+        <FluentTextInput @bind-Value="_filter"
+                         @bind-Value:after="StateHasChanged"
+                         Immediate="true"
+                         Placeholder="Filter applications…"
+                         Class="filter-box"
+                         Width="100%">
+            <StartTemplate>
+                <FluentIcon Value="@(new Icons.Regular.Size16.Search())" Color="Color.Default" />
+            </StartTemplate>
+        </FluentTextInput>
+    }
 
-<MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-        Style="position:fixed; bottom:2rem; right:2rem;"
-        OnClick="OpenNewAppDialog" />
+    <div class="app-grid">
+        @foreach (var app in Filtered)
+        {
+            <a class="app-card" href="@($"/app/{app.Slug}")">
+                <div class="app-card-head">
+                    <h2>@app.Name</h2>
+                    <FluentIcon Value="@(new Icons.Regular.Size16.ChevronRight())" Color="Color.Default" />
+                </div>
+                <code class="app-card-slug">@app.Slug</code>
+                <div class="app-card-body">
+                    @if (app.Latest is not null)
+                    {
+                        <FluentBadge Appearance="BadgeAppearance.Tint" Color="BadgeColor.Brand">
+                            @app.Latest.VersionString
+                        </FluentBadge>
+                        <span class="muted" title="@Format.Utc(app.Latest.UploadedAt)">
+                            @Format.Relative(app.Latest.UploadedAt)
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="muted">No versions uploaded</span>
+                    }
+                </div>
+                <div class="app-card-foot muted">
+                    @app.TotalVersions @(app.TotalVersions == 1 ? "version" : "versions")
+                    @if (app.Latest is not null)
+                    {
+                        <span>· @Format.Size(app.Latest.FileSizeBytes) latest</span>
+                    }
+                </div>
+            </a>
+        }
+    </div>
+
+    @if (!Filtered.Any())
+    {
+        <p class="muted centered-state">No application matches “@_filter”.</p>
+    }
+}
 
 @code {
     private List<AppSummary>? _apps;
+    private string _filter = "";
+    private string _newName = "";
+    private bool _creating;
+    private bool _savingNew;
 
-    protected override async Task OnInitializedAsync()
+    private IEnumerable<AppSummary> Filtered =>
+        _apps is null
+            ? []
+            : _apps.Where(a =>
+                string.IsNullOrWhiteSpace(_filter)
+                || a.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase)
+                || a.Slug.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => _apps = await Updates.GetAllAppsAsync();
+
+    private void ShowCreate(bool show)
     {
-        _apps = await Updates.GetAllAppsAsync();
+        _creating = show;
+        _newName = "";
     }
 
-    private void GoToApp(string slug) => Nav.NavigateTo($"/app/{slug}");
-
-    private async Task OpenNewAppDialog()
+    private async Task CreateApp()
     {
-        var dialog = await DialogService.ShowAsync<NewAppDialog>("Register New App");
-        var result = await dialog.Result;
+        if (string.IsNullOrWhiteSpace(_newName))
+        {
+            await Notifications.ShowWarningToastAsync("Name required", "Give the application a name.");
+            return;
+        }
 
-        if (result is { Canceled: false, Data: string slug })
-            Nav.NavigateTo($"/app/{slug}");
+        _savingNew = true;
+        try
+        {
+            var app = await Updates.CreateAppAsync(_newName.Trim());
+            Nav.NavigateTo($"/app/{app.Slug}");
+        }
+        finally
+        {
+            _savingNew = false;
+        }
     }
 }

@@ -5,7 +5,7 @@ using AppUpdateServer.Data;
 using AppUpdateServer.Services;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
-using MudBlazor.Services;
+using Microsoft.FluentUI.AspNetCore.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,11 +26,20 @@ builder.Services.AddDbContext<AppDbContext>(opts =>
 
 builder.Services.AddScoped<UpdateService>();
 builder.Services.AddControllers();
-builder.Services.AddMudServices();
+
+// Fluent UI expects a default HttpClient to be registered on Blazor Server.
+builder.Services.AddHttpClient();
+builder.Services.AddFluentUIComponents();
 builder.Services.AddHealthChecks().AddCheck<StorageHealthCheck>("storage");
 
 // Add services to the container.
-builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder
+    .Services.AddRazorComponents()
+    .AddInteractiveServerComponents()
+    // Browser uploads travel over the SignalR circuit in chunks. The 32 KB
+    // default would make a large installer take tens of thousands of round
+    // trips, so allow the larger buffer FluentInputFile is configured with.
+    .AddHubOptions(opts => opts.MaximumReceiveMessageSize = 512 * 1024);
 
 var app = builder.Build();
 

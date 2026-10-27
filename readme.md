@@ -1,6 +1,6 @@
 # App Update Server
 
-A self-hosted application update server with a web UI and CLI tool. Built with ASP.NET Core, Blazor, and SQLite.
+A self-hosted application update server with a web UI and CLI tool. Built with ASP.NET Core, Blazor Server, Fluent UI, and SQLite.
 
 ## Overview
 
@@ -8,7 +8,7 @@ App Update Server allows you to host and distribute updates for your desktop app
 
 ## Features
 
-- Web UI for managing applications and versions.
+- Web UI for managing applications and versions, with light and dark themes.
 - REST API for version checks and binary downloads.
 - CLI tool (`aus`) for uploading new versions from build pipelines.
 - Rollback support - deleting the latest version promotes the previous one automatically.
