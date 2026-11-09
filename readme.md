@@ -47,10 +47,33 @@ All endpoints under `/api/update`:
 | `version` | yes | Version string (see format below) |
 | `updateFile` | yes | The binary |
 | `notes` | no | Release notes (`releaseNotes` is also accepted, for older CLI versions) |
+| `tag` | no | Tags the app (see Catalog below); when omitted the app's tag is left unchanged |
 
 Version strings must be 1-64 characters of letters, digits, dot, dash, underscore or plus, and start with a letter or digit — e.g. `3.2.0.0`, `1.2.0`, `1.0.0-beta+build.7`. The version string becomes part of the stored file name, so anything outside that set is rejected with a 400.
 
 Re-uploading an existing version replaces its binary, hash, notes, and timestamp in place.
+
+### Catalog
+
+`GET /api/update/catalog?tag=<tag>` is a public, read-only list of every app carrying that tag, each at its latest version — meant for an intranet download page that should show only its own apps. Apps without a tag, or without any uploaded version, are never listed, and the `tag` parameter is required (400 without it), so the full app list stays behind the management API.
+
+```json
+[
+  {
+    "name": "Section Analyzer",
+    "slug": "section-analyzer",
+    "tag": "my-company",
+    "version": "2.1.0",
+    "releaseNotes": "…",
+    "uploadedAt": "2026-10-01T10:00:00",
+    "fileSizeBytes": 18350080,
+    "sha256Hash": "…",
+    "downloadUrl": "/api/update/download/section-analyzer/2.1.0"
+  }
+]
+```
+
+Tags are optional and set in the web UI (on the app page, or when registering an app), with `aus upload --tag`, `aus tag`, or `PUT /api/update/apps/{slug}/tag` (`{ "tag": "…" }`, `null` clears; API key required). They are normalised like slugs — `My Company` is stored as `my-company` — and are at most 64 characters.
 
 ### Version Check Request
 
@@ -121,6 +144,10 @@ aus delete-version --server https://your-server.com --api-key your-key --app my-
 
 # Delete an app
 aus delete-app --server https://your-server.com --api-key your-key --app my-app
+
+# Tag an app for a catalog (or remove its tag) — upload also takes --tag
+aus tag --server https://your-server.com --api-key your-key --app my-app --tag my-company
+aus tag --server https://your-server.com --api-key your-key --app my-app --clear
 ```
 
 ## Configuration
@@ -174,8 +201,9 @@ The web UI should be placed behind a reverse proxy with authentication. The foll
 
 - `POST /api/update` — version check
 - `GET /api/update/download/*` — binary download
+- `GET /api/update/catalog` — per-tag app list for download pages
 
-The upload endpoint (`/api/update/upload`) is protected by the API key header `X-API-Key` and does not require SSO. The other management endpoints (`/api/update/apps/...`) do sit behind forward auth, so `aus list`, `versions`, `rollback` and the delete commands need a proxy bypass rule for them if you run them against a protected server.
+The upload endpoint (`/api/update/upload`) is protected by the API key header `X-API-Key` and does not require SSO. The other management endpoints (`/api/update/apps/...`) do sit behind forward auth, so `aus list`, `versions`, `rollback`, `tag` and the delete commands need a proxy bypass rule for them if you run them against a protected server.
 
 TLS is expected to terminate at the proxy — the app serves plain HTTP on port 8080 and does not redirect. If your proxy enforces a request body limit of its own (nginx defaults to 1 MB via `client_max_body_size`), raise it to match `Storage:MaxUploadBytes` or uploads will fail before reaching the server.
 

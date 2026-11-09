@@ -9,7 +9,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>aus</ToolCommandName>
     <PackageId>AppUpdateServer.Cli</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Description>CLI tool for uploading app versions to AppUpdateServer</Description>
   </PropertyGroup>
 

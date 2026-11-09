@@ -299,6 +299,85 @@ public class UpdateServiceTests : IDisposable
     public void GenerateSlug_NormalisesNames(string name, string expected) =>
         Assert.Equal(expected, UpdateService.GenerateSlug(name));
 
+    // ── Tags and catalog ──────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("Bridgewiz", "bridgewiz")]
+    [InlineData("  My Company  ", "my-company")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("!!!", null)]
+    [InlineData(null, null)]
+    public void NormalizeTag_SlugifiesAndTreatsBlankAsNoTag(string? tag, string? expected) =>
+        Assert.Equal(expected, UpdateService.NormalizeTag(tag));
+
+    [Fact]
+    public void IsValidTag_RejectsTagsLongerThanTheColumn()
+    {
+        Assert.True(UpdateService.IsValidTag(new string('a', UpdateService.MaxTagLength)));
+        Assert.False(UpdateService.IsValidTag(new string('a', UpdateService.MaxTagLength + 1)));
+        Assert.True(UpdateService.IsValidTag(null));
+    }
+
+    [Fact]
+    public async Task CreateApp_StoresTheNormalisedTag()
+    {
+        await _service.CreateAppAsync("Tagged App", " Bridge Wiz ");
+
+        var app = await _service.GetAppBySlugAsync("tagged-app");
+        Assert.Equal("bridge-wiz", app!.Tag);
+    }
+
+    [Fact]
+    public async Task SetTag_SetsAndClears()
+    {
+        await _service.CreateAppAsync("My App");
+
+        Assert.True(await _service.SetTagAsync("my-app", "Acme"));
+        Assert.Equal("acme", (await _service.GetAppBySlugAsync("my-app"))!.Tag);
+
+        Assert.True(await _service.SetTagAsync("my-app", " "));
+        Assert.Null((await _service.GetAppBySlugAsync("my-app"))!.Tag);
+
+        Assert.False(await _service.SetTagAsync("missing", "acme"));
+    }
+
+    [Fact]
+    public async Task Catalog_ListsOnlyTaggedAppsWithVersions_AtTheirLatestVersion()
+    {
+        await _service.CreateAppAsync("Beta Tool", "acme");
+        await _service.CreateAppAsync("Alpha Tool", "acme");
+        await _service.CreateAppAsync("No Versions", "acme");
+        await _service.CreateAppAsync("Other Company", "globex");
+        await _service.CreateAppAsync("Untagged");
+
+        await _service.UploadVersionAsync("beta-tool", "1.0.0", "", Body("b1"), "Beta.exe");
+        await _service.UploadVersionAsync("alpha-tool", "1.0.0", "", Body("a1"), "Alpha.exe");
+        await _service.UploadVersionAsync("alpha-tool", "1.1.0", "newer", Body("a2"), "Alpha.exe");
+        await _service.UploadVersionAsync("other-company", "1.0.0", "", Body("o1"), "O.exe");
+        await _service.UploadVersionAsync("untagged", "1.0.0", "", Body("u1"), "U.exe");
+
+        var catalog = await _service.GetCatalogAsync("ACME");
+
+        Assert.Equal(["Alpha Tool", "Beta Tool"], catalog.Select(e => e.Name));
+        var alpha = catalog[0];
+        Assert.Equal("1.1.0", alpha.Version);
+        Assert.Equal("newer", alpha.ReleaseNotes);
+        Assert.Equal(Sha256("a2"), alpha.Sha256Hash);
+        Assert.Equal("/api/update/download/alpha-tool/1.1.0", alpha.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task GetTags_ListsEachTagOnce()
+    {
+        await _service.CreateAppAsync("A", "zeta");
+        await _service.CreateAppAsync("B", "acme");
+        await _service.CreateAppAsync("C", "acme");
+        await _service.CreateAppAsync("D");
+
+        Assert.Equal(["acme", "zeta"], await _service.GetTagsAsync());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static Stream Body(string content) => new MemoryStream(Encoding.UTF8.GetBytes(content));

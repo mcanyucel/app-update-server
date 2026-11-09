@@ -8,6 +8,7 @@ public record AppSummary(
     int Id,
     string Name,
     string Slug,
+    string? Tag,
     VersionSummary? Latest,
     int TotalVersions
 );
@@ -22,11 +23,32 @@ public record VersionSummary(
     string FileName
 );
 
+/// <summary>
+/// One row of the public catalog: display data only, no internal ids. The
+/// download URL is relative to the server origin, like the version check's.
+/// </summary>
+public record CatalogEntry(
+    string Name,
+    string Slug,
+    string Tag,
+    string Version,
+    string ReleaseNotes,
+    DateTime UploadedAt,
+    long FileSizeBytes,
+    string Sha256Hash,
+    string DownloadUrl
+);
+
 public record UploadResult(bool Success, string? Error, VersionSummary? Version);
 
 public class UpdateService(AppDbContext db, IConfiguration config, ILogger<UpdateService> logger)
 {
     public const long DefaultMaxUploadBytes = 1024L * 1024 * 1024; // 1 GiB
+
+    public const int MaxTagLength = 64;
+
+    public const string InvalidTagMessage =
+        "Tags may be at most 64 characters of letters, digits and dashes.";
 
     private string BinariesPath => GetBinariesPath(config);
 
@@ -102,7 +124,71 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
             .FirstOrDefaultAsync();
     }
 
-    public async Task<App> CreateAppAsync(string name)
+    /// <summary>Every tag in use, for the tag pickers.</summary>
+    public async Task<List<string>> GetTagsAsync() =>
+        await db
+            .Apps.Where(a => a.Tag != null)
+            .Select(a => a.Tag!)
+            .Distinct()
+            .OrderBy(t => t)
+            .ToListAsync();
+
+    /// <summary>
+    /// Apps with the given tag that have at least one version, each with its
+    /// latest version. Apps with no versions have nothing to download, so they
+    /// are left out.
+    /// </summary>
+    public async Task<List<CatalogEntry>> GetCatalogAsync(string tag)
+    {
+        var normalized = NormalizeTag(tag);
+        if (normalized is null)
+            return [];
+
+        var apps = await db
+            .Apps.Where(a => a.Tag == normalized)
+            .Include(a => a.Versions)
+            .OrderBy(a => a.Name)
+            .AsNoTracking()
+            .ToListAsync();
+
+        return apps.Where(a => a.Versions.Count > 0)
+            .Select(a =>
+            {
+                var v = a.Versions.OrderByDescending(x => x.UploadedAt).First();
+                return new CatalogEntry(
+                    a.Name,
+                    a.Slug,
+                    normalized,
+                    v.VersionString,
+                    v.ReleaseNotes,
+                    v.UploadedAt,
+                    v.FileSizeBytes,
+                    v.Sha256Hash,
+                    $"/api/update/download/{a.Slug}/{v.VersionString}"
+                );
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Sets or clears (null / blank) an app's tag. Returns false when the app
+    /// does not exist or the tag is too long.
+    /// </summary>
+    public async Task<bool> SetTagAsync(string slug, string? tag)
+    {
+        if (!IsValidTag(tag))
+            return false;
+
+        var app = await db.Apps.FirstOrDefaultAsync(a => a.Slug == slug);
+        if (app is null)
+            return false;
+
+        app.Tag = NormalizeTag(tag);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<App> CreateAppAsync(string name, string? tag = null)
     {
         var slug = GenerateSlug(name);
         var baseSlug = slug;
@@ -110,7 +196,12 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
         while (await db.Apps.AnyAsync(a => a.Slug == slug))
             slug = $"{baseSlug}-{counter++}";
 
-        var app = new App { Name = name, Slug = slug };
+        var app = new App
+        {
+            Name = name,
+            Slug = slug,
+            Tag = NormalizeTag(tag),
+        };
         db.Apps.Add(app);
         await db.SaveChangesAsync();
         return app;
@@ -284,6 +375,7 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
             app.Id,
             app.Name,
             app.Slug,
+            app.Tag,
             latest is null ? null : ToVersionSummary(latest),
             app.Versions.Count
         );
@@ -319,6 +411,24 @@ public class UpdateService(AppDbContext db, IConfiguration config, ILogger<Updat
             logger.LogWarning(ex, "Could not remove temp file {Path}", path);
         }
     }
+
+    /// <summary>
+    /// Tags travel in query strings, so they get the slug treatment: lowercase,
+    /// anything other than letters and digits collapsed to a dash. Blank → null.
+    /// Callers check <see cref="IsValidTag"/> first; this does not truncate.
+    /// </summary>
+    public static string? NormalizeTag(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+            return null;
+
+        var normalized = GenerateSlug(tag);
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    /// <summary>Blank is valid (it clears the tag); otherwise it must fit the column.</summary>
+    public static bool IsValidTag(string? tag) =>
+        (NormalizeTag(tag)?.Length ?? 0) <= MaxTagLength;
 
     public static string GenerateSlug(string name) =>
         System

@@ -7,6 +7,8 @@ namespace AppUpdateServer.Api;
 
 public record UpdateCheckRequest(string AppIdentity, int StateSeed);
 
+public record SetTagRequest(string? Tag);
+
 public record UpdateCheckResponse(
     string Version,
     string DownloadUrl,
@@ -61,6 +63,20 @@ public class UpdateController(
         return File(stream, contentType, fileName);
     }
 
+    /// <summary>
+    /// Public, read-only list of the latest version of every app carrying
+    /// <paramref name="tag"/>, for download pages. The tag is required so the
+    /// full app list stays behind the management API.
+    /// </summary>
+    [HttpGet("catalog")]
+    public async Task<IActionResult> Catalog([FromQuery] string? tag)
+    {
+        if (UpdateService.NormalizeTag(tag) is null)
+            return BadRequest("tag is required");
+
+        return Ok(await updates.GetCatalogAsync(tag!));
+    }
+
     [HttpPost("upload")]
     public async Task<IActionResult> Upload()
     {
@@ -75,6 +91,8 @@ public class UpdateController(
         if (string.IsNullOrEmpty(notes))
             notes = form["releaseNotes"].ToString();
         var file = form.Files["updateFile"];
+        // Optional. When sent it (re)tags the app; when absent the tag is left alone.
+        var tag = form.ContainsKey("tag") ? form["tag"].ToString() : null;
 
         if (string.IsNullOrWhiteSpace(appName) || string.IsNullOrWhiteSpace(version))
             return BadRequest("appName and version are required");
@@ -85,12 +103,19 @@ public class UpdateController(
         if (file is null || file.Length == 0)
             return BadRequest("updateFile is required");
 
+        if (!UpdateService.IsValidTag(tag))
+            return BadRequest(UpdateService.InvalidTagMessage);
+
         var slug = UpdateService.GenerateSlug(appName);
         var existing = await updates.GetAppBySlugAsync(slug);
         if (existing is null)
         {
             logger.LogInformation("Auto-creating app record for {Name}", appName);
-            await updates.CreateAppAsync(appName);
+            await updates.CreateAppAsync(appName, tag);
+        }
+        else if (tag is not null)
+        {
+            await updates.SetTagAsync(slug, tag);
         }
 
         await using var stream = file.OpenReadStream();
@@ -197,6 +222,22 @@ public class UpdateController(
 
         await updates.DeleteVersionAsync(slug, versions[0].Id);
         return Ok(versions[1]);
+    }
+
+    /// <summary>Sets an app's tag; a null or blank tag clears it.</summary>
+    [HttpPut("apps/{slug}/tag")]
+    public async Task<IActionResult> SetTag(string slug, [FromBody] SetTagRequest request)
+    {
+        if (!IsAuthorized())
+            return Unauthorized();
+
+        if (!UpdateService.IsValidTag(request.Tag))
+            return BadRequest(UpdateService.InvalidTagMessage);
+
+        if (!await updates.SetTagAsync(slug, request.Tag))
+            return NotFound($"App '{slug}' not found");
+
+        return Ok(await updates.GetAppBySlugAsync(slug));
     }
 
     [HttpGet("apps/{slug}/versions")]

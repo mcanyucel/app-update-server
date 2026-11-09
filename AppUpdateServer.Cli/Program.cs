@@ -14,6 +14,10 @@ var versionOption = new Option<string>("--version", "Version string") { IsRequir
 var fileOption = new Option<FileInfo>("--file", "Path to the installer file") { IsRequired = true };
 var notesOption = new Option<string>("--notes", () => "", "Release notes");
 var versionIdOption = new Option<int>("--version-id", "Version ID") { IsRequired = true };
+var uploadTagOption = new Option<string?>(
+    "--tag",
+    "Tag the app (e.g. a company name) so it appears in that tag's public catalog; omit to leave the tag unchanged"
+);
 
 // ── Upload ────────────────────────────────────────────────────────────────────
 
@@ -25,10 +29,11 @@ var uploadCommand = new Command("upload", "Upload a new version to the update se
     versionOption,
     fileOption,
     notesOption,
+    uploadTagOption,
 };
 
 uploadCommand.SetHandler(
-    async (server, apiKey, app, version, file, notes) =>
+    async (server, apiKey, app, version, file, notes, tag) =>
     {
         if (!file.Exists)
         {
@@ -57,6 +62,8 @@ uploadCommand.SetHandler(
                     { new StringContent(notes), "notes" },
                     { new StreamContent(progressStream), "updateFile", file.Name },
                 };
+                if (tag is not null)
+                    content.Add(new StringContent(tag), "tag");
 
                 var response = await http.PostAsync(
                     $"{server.TrimEnd('/')}/api/update/upload",
@@ -76,7 +83,8 @@ uploadCommand.SetHandler(
     appOption,
     versionOption,
     fileOption,
-    notesOption
+    notesOption,
+    uploadTagOption
 );
 
 // ── List apps ─────────────────────────────────────────────────────────────────
@@ -107,6 +115,7 @@ listCommand.SetHandler(
         var table = new Table();
         table.AddColumn("Name");
         table.AddColumn("Slug");
+        table.AddColumn("Tag");
         table.AddColumn("Latest Version");
         table.AddColumn("Uploaded");
         table.AddColumn("Versions");
@@ -116,6 +125,7 @@ listCommand.SetHandler(
             table.AddRow(
                 app.Name,
                 app.Slug,
+                app.Tag is null ? "[grey]-[/]" : Markup.Escape(app.Tag),
                 app.Latest?.VersionString ?? "[grey]none[/]",
                 app.Latest?.UploadedAt.ToString("yyyy-MM-dd HH:mm") ?? "-",
                 app.TotalVersions.ToString()
@@ -264,6 +274,55 @@ deleteAppCommand.SetHandler(
     appOption
 );
 
+// ── Tag ───────────────────────────────────────────────────────────────────────
+
+var tagValueOption = new Option<string>("--tag", "New tag for the app") { IsRequired = false };
+var clearTagOption = new Option<bool>("--clear", "Remove the app's tag");
+
+var tagCommand = new Command("tag", "Set or remove an app's tag");
+tagCommand.AddOption(serverOption);
+tagCommand.AddOption(apiKeyOption);
+tagCommand.AddOption(appOption);
+tagCommand.AddOption(tagValueOption);
+tagCommand.AddOption(clearTagOption);
+
+tagCommand.SetHandler(
+    async (server, apiKey, app, tag, clear) =>
+    {
+        if (clear == !string.IsNullOrWhiteSpace(tag))
+        {
+            AnsiConsole.MarkupLine("[red]Error:[/] Pass either --tag <tag> or --clear.");
+            return;
+        }
+
+        using var http = MakeClient(apiKey);
+        var response = await http.PutAsJsonAsync(
+            $"{server.TrimEnd('/')}/api/update/apps/{app}/tag",
+            new { tag = clear ? null : tag }
+        );
+
+        if (!response.IsSuccessStatusCode)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]Failed:[/] {response.StatusCode} — {Markup.Escape(await response.Content.ReadAsStringAsync())}"
+            );
+            return;
+        }
+
+        var updated = await response.Content.ReadFromJsonAsync<AppSummary>();
+        AnsiConsole.MarkupLine(
+            updated?.Tag is null
+                ? $"[green]Removed[/] the tag from '{app}'."
+                : $"[green]Tagged[/] '{app}' as [cyan]{Markup.Escape(updated.Tag)}[/]."
+        );
+    },
+    serverOption,
+    apiKeyOption,
+    appOption,
+    tagValueOption,
+    clearTagOption
+);
+
 // ── Root command ──────────────────────────────────────────────────────────────
 
 var rootCommand = new RootCommand("aus — App Update Server CLI")
@@ -274,6 +333,7 @@ var rootCommand = new RootCommand("aus — App Update Server CLI")
     rollbackCommand,
     deleteVersionCommand,
     deleteAppCommand,
+    tagCommand,
 };
 
 return await rootCommand.InvokeAsync(args);
@@ -307,7 +367,14 @@ static string FormatSize(long bytes) =>
 
 // ── DTOs (mirror server records) ──────────────────────────────────────────────
 
-record AppSummary(int Id, string Name, string Slug, VersionSummary? Latest, int TotalVersions);
+record AppSummary(
+    int Id,
+    string Name,
+    string Slug,
+    string? Tag,
+    VersionSummary? Latest,
+    int TotalVersions
+);
 
 record VersionSummary(
     int Id,

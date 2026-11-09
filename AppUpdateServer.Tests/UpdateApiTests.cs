@@ -33,7 +33,8 @@ public class UpdateApiTests : IClassFixture<UpdateServerFactory>
         string version,
         string? notes = null,
         string notesFieldName = "notes",
-        string content = "binary"
+        string content = "binary",
+        string? tag = null
     )
     {
         var form = new MultipartFormDataContent
@@ -44,6 +45,8 @@ public class UpdateApiTests : IClassFixture<UpdateServerFactory>
         };
         if (notes is not null)
             form.Add(new StringContent(notes), notesFieldName);
+        if (tag is not null)
+            form.Add(new StringContent(tag), "tag");
         return form;
     }
 
@@ -181,7 +184,84 @@ public class UpdateApiTests : IClassFixture<UpdateServerFactory>
         Assert.Single(versions!);
     }
 
+    [Fact]
+    public async Task Catalog_IsPublicAndFilteredByTag()
+    {
+        await Client()
+            .PostAsync("/api/update/upload", UploadForm("Catalog App", "1.0.0", tag: "Catalog Co"));
+        await Client().PostAsync("/api/update/upload", UploadForm("Uncatalogued App", "1.0.0"));
+
+        var entries = await Client(apiKey: null)
+            .GetFromJsonAsync<List<CatalogPayload>>("/api/update/catalog?tag=catalog-co");
+
+        var entry = Assert.Single(entries!);
+        Assert.Equal("Catalog App", entry.Name);
+        Assert.Equal("1.0.0", entry.Version);
+        Assert.Equal("/api/update/download/catalog-app/1.0.0", entry.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task Catalog_WithoutATag_IsABadRequest()
+    {
+        var response = await Client(apiKey: null).GetAsync("/api/update/catalog");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Upload_WithATag_RetagsAnExistingApp_AndWithoutOne_LeavesItAlone()
+    {
+        await Client()
+            .PostAsync("/api/update/upload", UploadForm("Retag App", "1.0.0", tag: "first"));
+        await Client()
+            .PostAsync("/api/update/upload", UploadForm("Retag App", "1.1.0", tag: "second"));
+        await Client().PostAsync("/api/update/upload", UploadForm("Retag App", "1.2.0"));
+
+        var apps = await Client().GetFromJsonAsync<List<AppPayload>>("/api/update/apps");
+        Assert.Equal("second", apps!.Single(a => a.Slug == "retag-app").Tag);
+    }
+
+    [Fact]
+    public async Task Upload_WithATooLongTag_IsRejected()
+    {
+        var response = await Client()
+            .PostAsync(
+                "/api/update/upload",
+                UploadForm("Long Tag App", "1.0.0", tag: new string('x', 65))
+            );
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetTag_NeedsTheApiKey_AndCanClear()
+    {
+        await Client().PostAsync("/api/update/upload", UploadForm("Set Tag App", "1.0.0"));
+
+        var anonymous = await Client(apiKey: null)
+            .PutAsJsonAsync("/api/update/apps/set-tag-app/tag", new { tag = "x" });
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        var set = await Client()
+            .PutAsJsonAsync("/api/update/apps/set-tag-app/tag", new { tag = "Acme" });
+        set.EnsureSuccessStatusCode();
+        Assert.Equal("acme", (await set.Content.ReadFromJsonAsync<AppPayload>())!.Tag);
+
+        var cleared = await Client()
+            .PutAsJsonAsync("/api/update/apps/set-tag-app/tag", new { tag = (string?)null });
+        cleared.EnsureSuccessStatusCode();
+        Assert.Null((await cleared.Content.ReadFromJsonAsync<AppPayload>())!.Tag);
+
+        var missing = await Client()
+            .PutAsJsonAsync("/api/update/apps/no-such-app/tag", new { tag = "acme" });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
     private record VersionPayload(int Id, string VersionString, string ReleaseNotes);
+
+    private record AppPayload(string Slug, string? Tag);
+
+    private record CatalogPayload(string Name, string Version, string DownloadUrl);
 
     private record CheckPayload(string Version, string DownloadUrl, string Sha256Hash);
 }
@@ -217,6 +297,9 @@ public class ForwardAuthTests : IClassFixture<ForwardAuthServerFactory>
         );
         // Not found rather than unauthorized: the middleware let it through.
         Assert.Equal(HttpStatusCode.NotFound, check.StatusCode);
+
+        var catalog = await client.GetAsync("/api/update/catalog?tag=anything");
+        Assert.Equal(HttpStatusCode.OK, catalog.StatusCode);
     }
 
     [Fact]

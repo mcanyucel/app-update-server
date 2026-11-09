@@ -145,13 +145,17 @@ app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();
 
-// Routes that installed apps, the CLI and container monitoring must reach
+// Routes that installed apps, download pages, the CLI and container monitoring must reach
 // without going through SSO. Upload and the management endpoints under
 // /api/update carry their own X-API-Key check instead.
 static bool RequiresForwardAuth(HttpContext context)
 {
     var path = context.Request.Path.Value ?? "";
-    if (path.StartsWith("/api/update/download") || path == "/health")
+    if (
+        path.StartsWith("/api/update/download")
+        || path == "/api/update/catalog"
+        || path == "/health"
+    )
         return false;
     if (path == "/api/update" && HttpMethods.IsPost(context.Request.Method))
         return false;

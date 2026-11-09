@@ -208,6 +208,29 @@ code {
     color: var(--colorNeutralForeground3);
 }
 
+.app-card-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.create-panel .tag-field,
+.tag-panel .tag-field {
+    margin-top: 0.75rem;
+}
+
+.tag-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+}
+
+.tag-row > :first-child {
+    flex: 1;
+    max-width: 24rem;
+}
+
 .app-card-body {
     display: flex;
     align-items: center;

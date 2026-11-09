@@ -23,3 +23,6 @@ appsettings.Development.json
 Thumbs.db
 
 **/binaries/
+
+# Locally packed CLI tool (dotnet pack -o nupkg)
+nupkg/

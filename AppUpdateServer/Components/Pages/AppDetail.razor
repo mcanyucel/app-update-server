@@ -37,6 +37,12 @@ else
             <h1 class="page-title">@_app.Name</h1>
             <p class="page-subtitle">
                 <code>@_app.Slug</code>
+                @if (_app.Tag is not null)
+                {
+                    <FluentBadge Appearance="BadgeAppearance.Outline" Color="BadgeColor.Informative">
+                        @_app.Tag
+                    </FluentBadge>
+                }
                 <span>· @_versions.Count @(_versions.Count == 1 ? "version" : "versions")</span>
                 @if (_versions.Count > 0)
                 {
@@ -141,6 +147,34 @@ else
         </dl>
     </FluentCard>
 
+    <!-- Catalog -->
+    <FluentCard Class="panel tag-panel">
+        <h2 class="panel-title">Catalog</h2>
+        <p class="panel-hint">
+            Tagged applications are listed, latest version only, by the public catalog endpoint, so a
+            download page can show its own apps without the API key.
+        </p>
+        <div class="tag-row">
+            <TagPicker Tags="_tags" @bind-Value="_tagDraft" />
+            <FluentButton Appearance="ButtonAppearance.Primary"
+                          OnClick="SaveTag"
+                          Loading="_savingTag"
+                          Disabled="@(!TagChanged)">
+                Save tag
+            </FluentButton>
+        </div>
+        @if (_app.Tag is not null)
+        {
+            <dl class="endpoint-list">
+                <dt><span class="method">GET</span> catalog</dt>
+                <dd>
+                    <code>@CatalogUrl</code>
+                    @CopyButton(CatalogUrl, "Catalog URL")
+                </dd>
+            </dl>
+        }
+    </FluentCard>
+
     <!-- Version history -->
     <FluentCard Class="panel">
         <h2 class="panel-title">Version history</h2>
@@ -213,6 +247,14 @@ else
     private bool _loading = true;
     private string _origin = "";
 
+    private List<string> _tags = [];
+    private string? _tagDraft;
+    private bool _savingTag;
+
+    private bool TagChanged => UpdateService.NormalizeTag(_tagDraft) != _app?.Tag;
+
+    private string CatalogUrl => $"{_origin}/api/update/catalog?tag={Uri.EscapeDataString(_app?.Tag ?? "")}";
+
     private string _uploadVersion = "";
     private string _uploadNotes = "";
     private string? _uploadError;
@@ -253,6 +295,8 @@ else
     {
         _app = await Updates.GetAppBySlugAsync(Slug);
         _versions = _app is null ? [] : await Updates.GetVersionHistoryAsync(Slug);
+        _tags = await Updates.GetTagsAsync();
+        _tagDraft = _app?.Tag;
     }
 
     // ── Upload ────────────────────────────────────────────────────────────────
@@ -338,6 +382,31 @@ else
     private void OnUploadCompleted(IEnumerable<FluentInputFileEventArgs> files) => _uploadAttempt++;
 
     // ── Actions ───────────────────────────────────────────────────────────────
+
+    private async Task SaveTag()
+    {
+        if (!UpdateService.IsValidTag(_tagDraft))
+        {
+            await Notifications.ShowWarningToastAsync("Tag too long", UpdateService.InvalidTagMessage);
+            return;
+        }
+
+        _savingTag = true;
+        try
+        {
+            await Updates.SetTagAsync(Slug, _tagDraft);
+            await LoadData();
+            await Notifications.ShowSuccessToastAsync(
+                _app?.Tag is null ? "Tag removed" : $"Tagged “{_app.Tag}”",
+                _app?.Tag is null
+                    ? "The application is no longer listed in any catalog."
+                    : "The application now appears in that tag's catalog.");
+        }
+        finally
+        {
+            _savingTag = false;
+        }
+    }
 
     private void Download(VersionSummary version) =>
         Nav.NavigateTo($"/api/update/download/{Slug}/{version.VersionString}", forceLoad: true);

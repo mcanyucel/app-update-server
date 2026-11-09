@@ -1,0 +1,54 @@
+@*
+    Pick an existing tag or type a new one: a text field whose suggestion list
+    (a native datalist) offers the tags already in use.
+
+    Not a FluentCombobox: in Fluent UI 5.0.1 its free-form entry never commits
+    (fixed upstream in fluentui-blazor#5598, unreleased), and leaving the field
+    wipes any text that matches no existing option.
+*@
+<FluentTextInput Class="tag-field"
+                 Value="@Value"
+                 ValueChanged="@OnValueChanged"
+                 Immediate="true"
+                 ImmediateDelay="150"
+                 DataList="@_listId"
+                 AutoComplete="off"
+                 Label="@Label"
+                 Placeholder="e.g. my-company"
+                 Message="@HintOrError"
+                 MessageState="@(IsValid ? null : MessageState.Error)"
+                 Width="100%" />
+<datalist id="@_listId">
+    @foreach (var tag in Tags)
+    {
+        <option value="@tag"></option>
+    }
+</datalist>
+
+@code {
+    private readonly string _listId = $"tags-{Guid.NewGuid():N}";
+
+    /// <summary>Tags already in use, offered as suggestions.</summary>
+    [Parameter]
+    public IReadOnlyList<string> Tags { get; set; } = [];
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter]
+    public string Label { get; set; } = "Tag";
+
+    private bool IsValid => UpdateService.IsValidTag(Value);
+
+    private string HintOrError =>
+        !IsValid
+            ? UpdateService.InvalidTagMessage
+            : UpdateService.NormalizeTag(Value) is { } normalized && normalized != Value
+                ? $"Saved as “{normalized}”."
+                : "Optional. Download pages list apps by tag through the public catalog.";
+
+    private Task OnValueChanged(string? value) => ValueChanged.InvokeAsync(value);
+}

@@ -45,6 +45,7 @@
         {
             <p class="slug-preview">Slug: <code>@UpdateService.GenerateSlug(_newName)</code></p>
         }
+        <TagPicker Tags="_tags" @bind-Value="_newTag" />
         <div class="panel-actions">
             <FluentButton Appearance="ButtonAppearance.Primary" OnClick="CreateApp" Loading="_savingNew">
                 Create
@@ -102,7 +103,15 @@ else
                     <h2>@app.Name</h2>
                     <FluentIcon Value="@(new Icons.Regular.Size16.ChevronRight())" Color="Color.Default" />
                 </div>
-                <code class="app-card-slug">@app.Slug</code>
+                <div class="app-card-meta">
+                    <code class="app-card-slug">@app.Slug</code>
+                    @if (app.Tag is not null)
+                    {
+                        <FluentBadge Appearance="BadgeAppearance.Outline" Color="BadgeColor.Informative">
+                            @app.Tag
+                        </FluentBadge>
+                    }
+                </div>
                 <div class="app-card-body">
                     @if (app.Latest is not null)
                     {
@@ -139,6 +148,8 @@ else
     private List<AppSummary>? _apps;
     private string _filter = "";
     private string _newName = "";
+    private string? _newTag;
+    private List<string> _tags = [];
     private bool _creating;
     private bool _savingNew;
 
@@ -148,14 +159,20 @@ else
             : _apps.Where(a =>
                 string.IsNullOrWhiteSpace(_filter)
                 || a.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase)
-                || a.Slug.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+                || a.Slug.Contains(_filter, StringComparison.OrdinalIgnoreCase)
+                || (a.Tag?.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false));
 
-    protected override async Task OnInitializedAsync() => _apps = await Updates.GetAllAppsAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        _apps = await Updates.GetAllAppsAsync();
+        _tags = await Updates.GetTagsAsync();
+    }
 
     private void ShowCreate(bool show)
     {
         _creating = show;
         _newName = "";
+        _newTag = null;
     }
 
     private async Task CreateApp()
@@ -166,10 +183,16 @@ else
             return;
         }
 
+        if (!UpdateService.IsValidTag(_newTag))
+        {
+            await Notifications.ShowWarningToastAsync("Tag too long", UpdateService.InvalidTagMessage);
+            return;
+        }
+
         _savingNew = true;
         try
         {
-            var app = await Updates.CreateAppAsync(_newName.Trim());
+            var app = await Updates.CreateAppAsync(_newName.Trim(), _newTag);
             Nav.NavigateTo($"/app/{app.Slug}");
         }
         finally
